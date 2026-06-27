@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markdown結合</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f2;
+      --panel: #ffffff;
+      --ink: #17211d;
+      --muted: #5b6761;
+      --line: #d9ded6;
+      --accent: #1c7c73;
+      --accent-dark: #145b55;
+      --warn: #b15b23;
+      --soft: #e9f4f1;
+      --shadow: 0 18px 50px rgba(28, 42, 36, 0.13);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(246, 247, 242, 0.92), rgba(238, 242, 235, 0.96)),
+        radial-gradient(circle at top left, rgba(28, 124, 115, 0.16), transparent 34%),
+        #f6f7f2;
+      color: var(--ink);
+      font-family: "Segoe UI", "Yu Gothic UI", Meiryo, system-ui, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.48;
+    }
+
+    .app {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 28px 0 36px;
+    }
+
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 5vw, 48px);
+      line-height: 1.02;
+      font-weight: 760;
+    }
+
+    .subhead {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .button {
+      display: inline-grid;
+      grid-auto-flow: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 42px;
+      padding: 0 14px;
+      border-radius: 8px;
+      background: var(--ink);
+      color: white;
+      font-weight: 700;
+      white-space: nowrap;
+      box-shadow: 0 10px 24px rgba(23, 33, 29, 0.16);
+    }
+
+    .button.secondary {
+      background: var(--panel);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      box-shadow: none;
+    }
+
+    .button.accent {
+      background: var(--accent);
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      display: inline-block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .dropzone {
+      display: grid;
+      place-items: center;
+      min-height: 248px;
+      padding: 26px;
+      border: 2px dashed #9fb9b2;
+      border-radius: 8px;
+      background: linear-gradient(160deg, #ffffff, var(--soft));
+      text-align: center;
+      transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+    }
+
+    .dropzone.is-over {
+      border-color: var(--accent);
+      background: #eef9f6;
+      transform: translateY(-1px);
+    }
+
+    .dropzone strong {
+      display: block;
+      margin-top: 12px;
+      font-size: 22px;
+      line-height: 1.25;
+    }
+
+    .dropzone span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .drop-icon {
+      width: 58px;
+      height: 58px;
+      color: var(--accent);
+    }
+
+    .controls {
+      display: grid;
+      gap: 16px;
+      padding: 18px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field label,
+    .field-title {
+      color: #34423b;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .text-input,
+    .select {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      color: var(--ink);
+      padding: 0 11px;
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: white;
+    }
+
+    .segmented input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .segmented label {
+      min-height: 38px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .segmented input:checked + label {
+      background: var(--ink);
+      color: white;
+    }
+
+    .checkline {
+      display: grid;
+      grid-template-columns: 20px 1fr;
+      align-items: center;
+      gap: 10px;
+      color: #34423b;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .checkline input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-top: 1px solid var(--line);
+      background: #fbfcfa;
+    }
+
+    .stat {
+      padding: 14px 12px;
+      border-right: 1px solid var(--line);
+    }
+
+    .stat:last-child {
+      border-right: 0;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-rows: auto minmax(360px, calc(100vh - 260px));
+    }
+
+    .workspace-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfa;
+    }
+
+    .workspace-title {
+      min-width: 0;
+    }
+
+    .workspace-title strong {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 15px;
+    }
+
+    .workspace-title span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .tabs {
+      display: inline-grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      flex: 0 0 auto;
+    }
+
+    .tab {
+      min-width: 86px;
+      min-height: 34px;
+      padding: 0 12px;
+      background: white;
+      color: var(--muted);
+      font-weight: 750;
+    }
+
+    .tab.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    .content {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(210px, 30%) minmax(0, 1fr);
+    }
+
+    .file-list {
+      min-height: 0;
+      overflow: auto;
+      border-right: 1px solid var(--line);
+      background: #fbfcfa;
+    }
+
+    .file-row {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid #edf0eb;
+      color: #33433b;
+      font-size: 13px;
+    }
+
+    .file-row .path {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .file-row .size {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .preview-wrap {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      background: white;
+    }
+
+    textarea {
+      width: 100%;
+      height: 100%;
+      min-height: 360px;
+      resize: none;
+      border: 0;
+      outline: 0;
+      padding: 18px;
+      color: #1f2b26;
+      font: 13px/1.62 Consolas, "Cascadia Mono", "Yu Gothic UI", monospace;
+      background: white;
+      tab-size: 2;
+    }
+
+    .rendered {
+      display: none;
+      min-height: 0;
+      overflow: auto;
+      padding: 18px 22px 32px;
+      font-size: 15px;
+      line-height: 1.72;
+    }
+
+    .rendered h1,
+    .rendered h2,
+    .rendered h3 {
+      line-height: 1.25;
+    }
+
+    .rendered pre {
+      overflow: auto;
+      padding: 12px;
+      border-radius: 8px;
+      background: #f0f2ef;
+    }
+
+    .rendered code {
+      font-family: Consolas, "Cascadia Mono", monospace;
+    }
+
+    .empty {
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--muted);
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .status {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .status.warn {
+      color: var(--warn);
+    }
+
+    @media (max-width: 860px) {
+      .app {
+        width: min(100vw - 20px, 720px);
+        padding-top: 18px;
+      }
+
+      header,
+      .layout {
+        grid-template-columns: 1fr;
+        display: grid;
+      }
+
+      header {
+        align-items: start;
+      }
+
+      .actions {
+        justify-content: stretch;
+      }
+
+      .button {
+        width: 100%;
+      }
+
+      .workspace {
+        grid-template-rows: auto minmax(520px, 70vh);
+      }
+
+      .content {
+        grid-template-columns: 1fr;
+        grid-template-rows: 180px minmax(320px, 1fr);
+      }
+
+      .file-list {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .workspace-head {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .tabs {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>Markdown結合</h1>
+        <p class="subhead">フォルダ内のMarkdownを1つのファイルにまとめます。</p>
+      </div>
+      <div class="actions">
+        <label class="button secondary" for="folderInput">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5z"></path></svg>
+          選択
+        </label>
+        <button class="button accent" id="downloadBtn" disabled>
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+          保存
+        </button>
+      </div>
+    </header>
+
+    <section class="layout">
+      <aside class="panel">
+        <div class="controls">
+          <input id="folderInput" class="hidden" type="file" webkitdirectory directory multiple>
+          <div id="dropzone" class="dropzone">
+            <div>
+              <svg class="drop-icon icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 13V3"></path><path d="m7 8 5-5 5 5"></path><path d="M20 15v3a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3v-3"></path></svg>
+              <strong>フォルダをドロップ</strong>
+              <span>.md / .markdown を再帰的に読み込みます</span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="outputName">出力ファイル名</label>
+            <input class="text-input" id="outputName" type="text" value="フォルダ名.md" spellcheck="false">
+          </div>
+
+          <div class="field">
+            <div class="field-title">区切り</div>
+            <div class="segmented">
+              <input type="radio" name="separator" id="sepHeading" value="heading" checked>
+              <label for="sepHeading">見出し</label>
+              <input type="radio" name="separator" id="sepRule" value="rule">
+              <label for="sepRule">水平線</label>
+            </div>
+          </div>
+
+          <label class="checkline">
+            <input id="includePath" type="checkbox" checked>
+            <span>各ファイル名を挿入</span>
+          </label>
+
+          <label class="checkline">
+            <input id="trimBlank" type="checkbox" checked>
+            <span>前後の空行を整理</span>
+          </label>
+
+          <div id="status" class="status">待機中</div>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><strong id="fileCount">0</strong><span>FILES</span></div>
+          <div class="stat"><strong id="wordCount">0</strong><span>WORDS</span></div>
+          <div class="stat"><strong id="byteCount">0 KB</strong><span>SIZE</span></div>
+        </div>
+      </aside>
+
+      <section class="panel workspace">
+        <div class="workspace-head">
+          <div class="workspace-title">
+            <strong id="workspaceName">未読み込み</strong>
+            <span id="workspaceMeta">Markdownファイルがここに並びます</span>
+          </div>
+          <div class="tabs" role="tablist" aria-label="表示切替">
+            <button class="tab active" id="sourceTab" type="button">本文</button>
+            <button class="tab" id="previewTab" type="button">表示</button>
+          </div>
+        </div>
+
+        <div class="content">
+          <div id="fileList" class="file-list">
+            <div class="empty">ファイルなし</div>
+          </div>
+          <div class="preview-wrap">
+            <textarea id="output" readonly spellcheck="false" aria-label="結合結果"></textarea>
+            <article id="rendered" class="rendered"></article>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const dropzone = document.getElementById("dropzone");
+    const folderInput = document.getElementById("folderInput");
+    const downloadBtn = document.getElementById("downloadBtn");
+    const outputName = document.getElementById("outputName");
+    const includePath = document.getElementById("includePath");
+    const trimBlank = document.getElementById("trimBlank");
+    const statusEl = document.getElementById("status");
+    const fileCount = document.getElementById("fileCount");
+    const wordCount = document.getElementById("wordCount");
+    const byteCount = document.getElementById("byteCount");
+    const workspaceName = document.getElementById("workspaceName");
+    const workspaceMeta = document.getElementById("workspaceMeta");
+    const fileList = document.getElementById("fileList");
+    const output = document.getElementById("output");
+    const rendered = document.getElementById("rendered");
+    const sourceTab = document.getElementById("sourceTab");
+    const previewTab = document.getElementById("previewTab");
+
+    let markdownFiles = [];
+    let combinedText = "";
+
+    const formatBytes = (bytes) => {
+      if (!bytes) return "0 KB";
+      const units = ["B", "KB", "MB", "GB"];
+      const power = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      const value = bytes / Math.pow(1024, power);
+      return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[power]}`;
+    };
+
+    const normalizePath = (path) => path.replaceAll("\\", "/").replace(/^\/+/, "");
+
+    const isMarkdownFile = (file) => /\.(md|markdown)$/i.test(file.name);
+
+    const sanitizeFileName = (name) => String(name || "combined")
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/\.+$/g, "") || "combined";
+
+    const defaultOutputName = (folderName) => `${sanitizeFileName(folderName)}.md`;
+
+    const setStatus = (message, isWarning = false) => {
+      statusEl.textContent = message;
+      statusEl.classList.toggle("warn", isWarning);
+    };
+
+    const getSeparatorMode = () => document.querySelector("input[name='separator']:checked").value;
+
+    const readEntry = (entry, parentPath = "") => {
+      if (entry.isFile) {
+        return new Promise((resolve) => {
+          entry.file((file) => {
+            file.relativePath = normalizePath(parentPath + file.name);
+            resolve(isMarkdownFile(file) ? [file] : []);
+          }, () => resolve([]));
+        });
+      }
+
+      if (!entry.isDirectory) return Promise.resolve([]);
+
+      const reader = entry.createReader();
+      const entries = [];
+
+      return new Promise((resolve) => {
+        const readBatch = () => {
+          reader.readEntries(async (batch) => {
+            if (!batch.length) {
+              const children = await Promise.all(entries.map((child) => readEntry(child, `${parentPath}${entry.name}/`)));
+              resolve(children.flat());
+              return;
+            }
+            entries.push(...batch);
+            readBatch();
+          }, () => resolve([]));
+        };
+        readBatch();
+      });
+    };
+
+    const readHandle = async (handle, parentPath = "") => {
+      if (handle.kind === "file") {
+        const file = await handle.getFile();
+        file.relativePath = normalizePath(parentPath + file.name);
+        return isMarkdownFile(file) ? [file] : [];
+      }
+
+      if (handle.kind !== "directory") return [];
+
+      const files = [];
+      const nextPath = `${parentPath}${handle.name}/`;
+      for await (const child of handle.values()) {
+        files.push(...await readHandle(child, nextPath));
+      }
+      return files;
+    };
+
+    const filesFromDrop = async (event) => {
+      const items = Array.from(event.dataTransfer.items || []);
+      const handleItems = items.filter((item) => typeof item.getAsFileSystemHandle === "function");
+
+      if (handleItems.length) {
+        const handles = (await Promise.all(handleItems.map((item) => item.getAsFileSystemHandle()))).filter(Boolean);
+        const groups = await Promise.all(handles.map((handle) => readHandle(handle)));
+        return groups.flat();
+      }
+
+      const entryItems = items
+        .map((item) => item.webkitGetAsEntry ? item.webkitGetAsEntry() : null)
+        .filter(Boolean);
+
+      if (entryItems.length) {
+        const groups = await Promise.all(entryItems.map((entry) => readEntry(entry)));
+        return groups.flat();
+      }
+
+      return Array.from(event.dataTransfer.files || [])
+        .filter(isMarkdownFile)
+        .map((file) => {
+          file.relativePath = normalizePath(file.webkitRelativePath || file.name);
+          return file;
+        });
+    };
+
+    const filesFromInput = (fileListValue) => Array.from(fileListValue || [])
+      .filter(isMarkdownFile)
+      .map((file) => {
+        file.relativePath = normalizePath(file.webkitRelativePath || file.name);
+        return file;
+      });
+
+    const readText = (file) => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => resolve("");
+      reader.readAsText(file);
+    });
+
+    const rebuild = async () => {
+      if (!markdownFiles.length) {
+        combinedText = "";
+        output.value = "";
+        rendered.innerHTML = "";
+        downloadBtn.disabled = true;
+        fileCount.textContent = "0";
+        wordCount.textContent = "0";
+        byteCount.textContent = "0 KB";
+        return;
+      }
+
+      setStatus("結合中...");
+      const mode = getSeparatorMode();
+      const showPath = includePath.checked;
+      const trim = trimBlank.checked;
+      const chunks = [];
+
+      for (const file of markdownFiles) {
+        let text = await readText(file);
+        if (trim) text = text.trim();
+
+        if (showPath) {
+          if (mode === "heading") {
+            chunks.push(`## ${file.relativePath}\n\n${text}`);
+          } else {
+            chunks.push(`<!-- ${file.relativePath} -->\n\n${text}`);
+          }
+        } else {
+          chunks.push(text);
+        }
+      }
+
+      const separator = mode === "heading" ? "\n\n" : "\n\n---\n\n";
+      combinedText = chunks.join(separator).replace(/\n{4,}/g, "\n\n\n") + "\n";
+      output.value = combinedText;
+      rendered.innerHTML = renderMarkdown(combinedText);
+      downloadBtn.disabled = false;
+      fileCount.textContent = String(markdownFiles.length);
+      wordCount.textContent = String((combinedText.match(/[\p{L}\p{N}_-]+/gu) || []).length);
+      byteCount.textContent = formatBytes(new Blob([combinedText]).size);
+      setStatus("完了");
+    };
+
+    const renderFileList = () => {
+      if (!markdownFiles.length) {
+        fileList.innerHTML = '<div class="empty">ファイルなし</div>';
+        return;
+      }
+
+      fileList.innerHTML = markdownFiles.map((file) => `
+        <div class="file-row" title="${escapeHtml(file.relativePath)}">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path><path d="M8 13h8"></path><path d="M8 17h5"></path></svg>
+          <div>
+            <div class="path">${escapeHtml(file.relativePath)}</div>
+            <div class="size">${formatBytes(file.size)}</div>
+          </div>
+        </div>
+      `).join("");
+    };
+
+    const loadFiles = async (files, sourceLabel = "フォルダ") => {
+      markdownFiles = files
+        .filter(isMarkdownFile)
+        .sort((a, b) => normalizePath(a.relativePath || a.name).localeCompare(normalizePath(b.relativePath || b.name), "ja"));
+
+      markdownFiles.forEach((file) => {
+        file.relativePath = normalizePath(file.relativePath || file.webkitRelativePath || file.name);
+      });
+
+      renderFileList();
+      workspaceName.textContent = sourceLabel;
+      outputName.value = defaultOutputName(sourceLabel);
+      workspaceMeta.textContent = markdownFiles.length ? `${markdownFiles.length}件のMarkdown` : "Markdownファイルが見つかりません";
+      setStatus(markdownFiles.length ? "読み込み完了" : "Markdownファイルが見つかりません", !markdownFiles.length);
+      await rebuild();
+    };
+
+    const escapeHtml = (value) => String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+    const renderInline = (value) => escapeHtml(value)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+
+    const renderMarkdown = (markdown) => {
+      const lines = markdown.split(/\r?\n/);
+      const html = [];
+      let inCode = false;
+      let paragraph = [];
+
+      const flushParagraph = () => {
+        if (paragraph.length) {
+          html.push(`<p>${renderInline(paragraph.join(" "))}</p>`);
+          paragraph = [];
+        }
+      };
+
+      for (const line of lines) {
+        if (/^```/.test(line)) {
+          if (inCode) {
+            html.push("</code></pre>");
+            inCode = false;
+          } else {
+            flushParagraph();
+            html.push("<pre><code>");
+            inCode = true;
+          }
+          continue;
+        }
+
+        if (inCode) {
+          html.push(`${escapeHtml(line)}\n`);
+          continue;
+        }
+
+        if (!line.trim()) {
+          flushParagraph();
+          continue;
+        }
+
+        const heading = line.match(/^(#{1,6})\s+(.+)$/);
+        if (heading) {
+          flushParagraph();
+          const level = heading[1].length;
+          html.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+          continue;
+        }
+
+        if (/^\s*---+\s*$/.test(line)) {
+          flushParagraph();
+          html.push("<hr>");
+          continue;
+        }
+
+        const bullet = line.match(/^\s*[-*]\s+(.+)$/);
+        if (bullet) {
+          flushParagraph();
+          html.push(`<ul><li>${renderInline(bullet[1])}</li></ul>`);
+          continue;
+        }
+
+        paragraph.push(line);
+      }
+
+      flushParagraph();
+      if (inCode) html.push("</code></pre>");
+      return html.join("\n");
+    };
+
+    ["dragover", "drop"].forEach((eventName) => {
+      window.addEventListener(eventName, (event) => {
+        event.preventDefault();
+      });
+    });
+
+    dropzone.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      dropzone.classList.add("is-over");
+    });
+
+    dropzone.addEventListener("dragleave", () => {
+      dropzone.classList.remove("is-over");
+    });
+
+    dropzone.addEventListener("drop", async (event) => {
+      event.preventDefault();
+      dropzone.classList.remove("is-over");
+      setStatus("読み込み中...");
+      const files = await filesFromDrop(event);
+      const firstPath = files[0]?.relativePath || "フォルダ";
+      const label = firstPath.includes("/") ? firstPath.split("/")[0] : "ドロップしたファイル";
+      await loadFiles(files, label);
+    });
+
+    folderInput.addEventListener("change", async () => {
+      const files = filesFromInput(folderInput.files);
+      const firstPath = files[0]?.relativePath || "フォルダ";
+      const label = firstPath.includes("/") ? firstPath.split("/")[0] : "選択したファイル";
+      await loadFiles(files, label);
+    });
+
+    [includePath, trimBlank, outputName].forEach((element) => {
+      element.addEventListener("input", () => rebuild());
+      element.addEventListener("change", () => rebuild());
+    });
+
+    document.querySelectorAll("input[name='separator']").forEach((element) => {
+      element.addEventListener("change", () => rebuild());
+    });
+
+    sourceTab.addEventListener("click", () => {
+      sourceTab.classList.add("active");
+      previewTab.classList.remove("active");
+      output.style.display = "block";
+      rendered.style.display = "none";
+    });
+
+    previewTab.addEventListener("click", () => {
+      previewTab.classList.add("active");
+      sourceTab.classList.remove("active");
+      output.style.display = "none";
+      rendered.style.display = "block";
+    });
+
+    downloadBtn.addEventListener("click", () => {
+      const fileName = sanitizeFileName(outputName.value || "combined.md");
+      const finalName = /\.md$/i.test(fileName) ? fileName : `${fileName}.md`;
+      const blob = new Blob([combinedText], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = finalName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    });
+  </script>
+</body>
+</html>

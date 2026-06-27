@@ -8,11 +8,27 @@
     "cta": "詳しく見る →"
   },
   {
-    "icon": "🧰",
-    "title": "（サンプル）次のツール",
-    "desc": "ここに次のツールの説明が入ります。tools.json を編集してカードを追加してください。",
-    "tags": ["サンプル"],
-    "url": "#",
-    "cta": "準備中"
+    "icon": "📝",
+    "title": "Markdown 結合",
+    "desc": "フォルダ内の複数のMarkdownファイルを1つに結合するブラウザツール。インストール不要。",
+    "tags": ["Markdown", "ブラウザ"],
+    "url": "tools/md-folder-combiner/",
+    "cta": "開く →"
+  },
+  {
+    "icon": "📈",
+    "title": "PWM 波形ビジュアライザ",
+    "desc": "PWM信号の波形をインタラクティブに可視化。デューティ比や周波数を変えて確認できる。",
+    "tags": ["電子工作", "可視化", "ブラウザ"],
+    "url": "tools/pwm-waveform-visualizer/",
+    "cta": "開く →"
+  },
+  {
+    "icon": "🖼️",
+    "title": "画像フォルダ → PDF",
+    "desc": "複数の画像をまとめて1つのPDFに変換するブラウザツール。データは端末内で処理。",
+    "tags": ["PDF", "画像", "ブラウザ"],
+    "url": "tools/image-to-pdf/",
+    "cta": "開く →"
   }
 ]

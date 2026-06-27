@@ -1,0 +1,1099 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PWM波形ビジュアライザ</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f3;
+      --panel: #ffffff;
+      --ink: #18211d;
+      --muted: #5a665f;
+      --line: #d8ded8;
+      --accent: #0f7b78;
+      --accent-2: #c2553a;
+      --accent-3: #546aa8;
+      --soft: #e7f3ef;
+      --grid: rgba(24, 33, 29, 0.1);
+      --shadow: 0 16px 44px rgba(28, 40, 35, 0.13);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(244, 246, 243, 0.96), rgba(235, 240, 236, 0.98)),
+        radial-gradient(circle at 82% 12%, rgba(194, 85, 58, 0.12), transparent 28%),
+        #f4f6f3;
+      color: var(--ink);
+      font-family: "Segoe UI", "Yu Gothic UI", Meiryo, system-ui, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .app {
+      width: min(1320px, calc(100vw - 28px));
+      margin: 0 auto;
+      padding: 22px 0 34px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: end;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 4vw, 44px);
+      line-height: 1.05;
+      font-weight: 780;
+    }
+
+    .subtitle {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .mode-tabs {
+      display: inline-grid;
+      grid-template-columns: repeat(3, 1fr);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--panel);
+      box-shadow: 0 8px 24px rgba(24, 33, 29, 0.08);
+    }
+
+    .mode-tab {
+      min-width: 112px;
+      min-height: 42px;
+      padding: 0 14px;
+      color: var(--muted);
+      background: var(--panel);
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .mode-tab.active {
+      color: #fff;
+      background: var(--ink);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .controls {
+      display: grid;
+      gap: 16px;
+      padding: 16px;
+    }
+
+    .control {
+      display: grid;
+      gap: 8px;
+    }
+
+    .label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px;
+      color: #34433d;
+      font-weight: 760;
+    }
+
+    .value {
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .select,
+    .number {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      padding: 0 10px;
+    }
+
+    .switch {
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #34433d;
+    }
+
+    .switch input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+
+    .cell-options {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .cell-options input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .cell-options label {
+      min-height: 38px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 780;
+      cursor: pointer;
+      border-right: 1px solid var(--line);
+    }
+
+    .cell-options label:last-child {
+      border-right: 0;
+    }
+
+    .cell-options input:checked + label {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .frequency-options {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .frequency-options input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .frequency-options label {
+      min-height: 38px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 780;
+      cursor: pointer;
+      border-right: 1px solid var(--line);
+    }
+
+    .frequency-options label:last-child {
+      border-right: 0;
+    }
+
+    .frequency-options input:checked + label {
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .icon {
+      width: 17px;
+      height: 17px;
+      display: inline-block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      border-top: 1px solid var(--line);
+      background: #fbfcfb;
+    }
+
+    .stat {
+      padding: 13px 14px;
+      border-right: 1px solid var(--line);
+    }
+
+    .stat:nth-child(2n) {
+      border-right: 0;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 21px;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .workspace {
+      display: grid;
+      gap: 16px;
+    }
+
+    .scope {
+      display: grid;
+      grid-template-rows: auto minmax(420px, calc(100vh - 240px));
+    }
+
+    .scope-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfb;
+    }
+
+    .scope-head strong {
+      display: block;
+      font-size: 15px;
+    }
+
+    .scope-head span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 680;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      justify-content: flex-end;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .legend-item {
+      display: inline-grid;
+      grid-auto-flow: column;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .swatch {
+      width: 22px;
+      height: 3px;
+      border-radius: 999px;
+      background: var(--ink);
+    }
+
+    .swatch.sine { background: var(--accent); }
+    .swatch.carrier { background: var(--accent-2); }
+    .swatch.pulse { background: var(--ink); }
+    .swatch.voltage { background: var(--accent-3); }
+    .swatch.filtered { background: #8b6f1e; }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #fff;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .info {
+      padding: 16px;
+      min-height: 150px;
+    }
+
+    .info h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    .info p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 960px) {
+      .app {
+        width: min(100vw - 18px, 760px);
+        padding-top: 16px;
+      }
+
+      header,
+      .layout,
+      .cards {
+        grid-template-columns: 1fr;
+      }
+
+      header {
+        align-items: start;
+      }
+
+      .mode-tabs {
+        width: 100%;
+      }
+
+      .mode-tab {
+        min-width: 0;
+        padding: 0 8px;
+        font-size: 13px;
+      }
+
+      .scope {
+        grid-template-rows: auto min(800px, calc(100svh - 120px));
+      }
+
+      .scope-head {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .legend {
+        justify-content: flex-start;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .app {
+        width: calc(100vw - 12px);
+        padding: 10px 0 20px;
+      }
+
+      h1 {
+        font-size: 22px;
+      }
+
+      .subtitle {
+        font-size: 12px;
+      }
+
+      .controls {
+        padding: 12px;
+        gap: 12px;
+      }
+
+      .scope {
+        grid-template-rows: auto min(760px, calc(100svh - 120px));
+      }
+
+      .scope-head {
+        padding: 10px 12px;
+      }
+
+      .scope-head strong {
+        font-size: 13px;
+      }
+
+      .scope-head span {
+        font-size: 11px;
+      }
+
+      .stat {
+        padding: 10px 10px;
+      }
+
+      .stat strong {
+        font-size: 17px;
+      }
+
+      .stat span {
+        font-size: 10px;
+      }
+
+      .label-row {
+        font-size: 12px;
+      }
+
+      .legend {
+        gap: 6px 10px;
+        font-size: 11px;
+      }
+
+      .cell-options label,
+      .frequency-options label {
+        font-size: 12px;
+        min-height: 34px;
+      }
+
+      .cards {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>PWM波形ビジュアライザ</h1>
+        <p class="subtitle">正弦波PWMと位相シフトキャリアPWMのパルス生成、段階電圧、平均電圧の関係を同じ時間軸で表示します。</p>
+      </div>
+      <div class="mode-tabs" role="tablist" aria-label="PWM方式">
+        <button class="mode-tab active" type="button" data-mode="spwm">正弦波PWM</button>
+        <button class="mode-tab" type="button" data-mode="pscpwm">位相シフト</button>
+        <button class="mode-tab" type="button" data-mode="compare">比較</button>
+      </div>
+    </header>
+
+    <section class="layout">
+      <aside class="panel">
+        <div class="controls">
+          <div class="control">
+            <div class="label-row"><label for="modulation">変調率</label><span class="value" id="modulationValue">0.80</span></div>
+            <input id="modulation" type="range" min="0.05" max="1.15" step="0.01" value="0.80">
+          </div>
+
+          <div class="control">
+            <div class="label-row"><label for="fundamental">基本波周波数</label><span class="value" id="fundamentalValue">50 Hz</span></div>
+            <div class="frequency-options" id="fundamental">
+              <input type="radio" name="fundamental" id="fundamental50" value="50">
+              <label for="fundamental50">50 Hz</label>
+              <input type="radio" name="fundamental" id="fundamental60" value="60" checked>
+              <label for="fundamental60">60 Hz</label>
+            </div>
+          </div>
+
+          <div class="control">
+            <div class="label-row"><label for="carrierFrequency">キャリア周波数</label><span class="value" id="carrierFrequencyValue">600 Hz</span></div>
+            <input class="number" id="carrierFrequency" type="number" min="100" max="5000" step="50" value="600">
+          </div>
+
+          <div class="control">
+            <div class="label-row"><label for="cells">セル数</label><span class="value" id="cellsValue">3</span></div>
+            <div class="cell-options" id="cells">
+              <input type="radio" name="cells" id="cells2" value="2" checked>
+              <label for="cells2">2</label>
+              <input type="radio" name="cells" id="cells3" value="3">
+              <label for="cells3">3</label>
+              <input type="radio" name="cells" id="cells4" value="4">
+              <label for="cells4">4</label>
+              <input type="radio" name="cells" id="cells5" value="5">
+              <label for="cells5">5</label>
+            </div>
+          </div>
+
+          <div class="control">
+            <div class="label-row"><label for="dcVoltage">DC電圧</label><span class="value" id="dcVoltageValue">100 V</span></div>
+            <input id="dcVoltage" type="range" min="40" max="300" step="10" value="100">
+          </div>
+
+          <div class="control">
+            <div class="label-row"><label for="filter">平均化</label><span class="value" id="filterValue">0.10 周期</span></div>
+            <input id="filter" type="range" min="0.02" max="0.45" step="0.01" value="0.10">
+          </div>
+
+
+          <label class="switch">
+            <input id="showCarriers" type="checkbox" checked>
+            <span>キャリア波を重ねる</span>
+          </label>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><strong id="switchFreq">900 Hz</strong><span>等価スイッチング周波数</span></div>
+          <div class="stat"><strong id="levels">2</strong><span>出力レベル数</span></div>
+          <div class="stat"><strong id="peakVoltage">100 V</strong><span>セル電圧</span></div>
+          <div class="stat"><strong id="phaseStep">120°</strong><span>キャリア位相差</span></div>
+          <div class="stat"><strong id="carrierRatio">18</strong><span>キャリア比 (fc/f1)</span></div>
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <section class="panel scope">
+          <div class="scope-head">
+            <div>
+              <strong id="scopeTitle">正弦波PWM</strong>
+              <span id="scopeMeta">正弦参照波と三角キャリアの比較でパルス幅が決まります</span>
+            </div>
+            <div class="legend">
+              <span class="legend-item"><i class="swatch sine"></i>参照波</span>
+              <span class="legend-item"><i class="swatch carrier"></i>キャリア</span>
+              <span class="legend-item"><i class="swatch pulse"></i>パルス</span>
+              <span class="legend-item"><i class="swatch voltage"></i>出力電圧</span>
+              <span class="legend-item"><i class="swatch filtered"></i>平均</span>
+            </div>
+          </div>
+          <canvas id="scopeCanvas" width="1200" height="720" aria-label="PWM波形"></canvas>
+        </section>
+
+        <section class="cards">
+          <article class="panel info" id="spwmInfo">
+            <h2>正弦波PWM</h2>
+            <p>正弦参照波が三角キャリアより大きい区間をオンにします。参照波の振幅が大きいほどパルス幅が広がり、平均電圧は正弦波に近づきます。</p>
+          </article>
+          <article class="panel info" id="pscpwmInfo">
+            <h2>位相シフトキャリアPWM</h2>
+            <p>複数セルのキャリア位相をずらして、それぞれのセル電圧を合成します。合成電圧は段数が増え、見かけのリップル周波数も高くなります。</p>
+          </article>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("scopeCanvas");
+    const ctx = canvas.getContext("2d");
+    const tabs = Array.from(document.querySelectorAll(".mode-tab"));
+    const controls = {
+      modulation: document.getElementById("modulation"),
+      fundamental: document.getElementById("fundamental"),
+      carrierFrequency: document.getElementById("carrierFrequency"),
+      cells: document.getElementById("cells"),
+      dcVoltage: document.getElementById("dcVoltage"),
+      filter: document.getElementById("filter"),
+      showCarriers: document.getElementById("showCarriers")
+    };
+
+    const labels = {
+      modulation: document.getElementById("modulationValue"),
+      fundamental: document.getElementById("fundamentalValue"),
+      carrierFrequency: document.getElementById("carrierFrequencyValue"),
+      cells: document.getElementById("cellsValue"),
+      dcVoltage: document.getElementById("dcVoltageValue"),
+      filter: document.getElementById("filterValue"),
+      switchFreq: document.getElementById("switchFreq"),
+      levels: document.getElementById("levels"),
+      peakVoltage: document.getElementById("peakVoltage"),
+      phaseStep: document.getElementById("phaseStep"),
+      carrierRatio: document.getElementById("carrierRatio"),
+      title: document.getElementById("scopeTitle"),
+      meta: document.getElementById("scopeMeta")
+    };
+
+    let mode = "spwm";
+
+    const colors = {
+      ink: "#18211d",
+      muted: "#5a665f",
+      grid: "rgba(24, 33, 29, 0.11)",
+      sine: "#0f7b78",
+      carrier: "#c2553a",
+      pulse: "#18211d",
+      voltage: "#546aa8",
+      filtered: "#8b6f1e",
+      cell: ["#2563c4", "#d4500a", "#0f7b78", "#7e5aa7", "#927532"]
+    };
+
+    const getParams = () => {
+      const fundamental = Number(document.querySelector("input[name='fundamental']:checked").value);
+      const carrierFrequency = Math.max(1, Number(controls.carrierFrequency.value) || 1);
+      return {
+        modulation: Number(controls.modulation.value),
+        fundamental,
+        carrierFrequency,
+        carrierRatio: carrierFrequency / fundamental,
+        cells: Number(document.querySelector("input[name='cells']:checked").value),
+        dcVoltage: Number(controls.dcVoltage.value),
+        filter: Number(controls.filter.value),
+        showCarriers: controls.showCarriers.checked
+      };
+    };
+
+    const triangle = (phase) => {
+      const x = ((phase % 1) + 1) % 1;
+      return 1 - 4 * Math.abs(x - 0.5);
+    };
+
+    const reference = (x, modulation) => modulation * Math.sin(2 * Math.PI * x);
+
+    const spwm = (x, p) => {
+      const ref = reference(x, p.modulation);
+      const carrier = triangle(x * p.carrierRatio);
+      const pulse = ref >= carrier ? 1 : 0;
+      const voltage = pulse ? p.dcVoltage : -p.dcVoltage;
+      return { ref, carrier, pulse, voltage, cells: [voltage] };
+    };
+
+    const pscPwm = (x, p) => {
+      const ref = reference(x, p.modulation);
+      const cells = [];
+      let voltage = 0;
+      // 半ブリッジセル: 上アーム(-ref比較) / 下アーム(ref比較)、位相シフト360°/N
+      // 出力 = 下アーム合計 - 上アーム合計 → AC振幅 m×Vdc
+      const cellDcVoltage = p.dcVoltage / p.cells;
+      let lowerVoltage = 0;
+      let upperVoltage = 0;
+
+      for (let i = 0; i < p.cells; i += 1) {
+        const shift = i / p.cells;
+        const carrier = triangle(x * p.carrierRatio + shift);
+        const lowerOn = ref >= carrier;
+        const lowerV = lowerOn ? cellDcVoltage : 0;
+        cells.push(lowerV);
+        lowerVoltage += lowerV;
+        // 偶数N: 上アームを360°/(2N)インターリーブ（180°ペア解消）
+        // 奇数N: インターリーブ不要（既にキャリアが均等配置）
+        const upperShift = p.cells % 2 === 0 ? 0.5 / p.cells : 0;
+        upperVoltage += (-ref) >= triangle(x * p.carrierRatio + shift + upperShift) ? cellDcVoltage : 0;
+      }
+
+      voltage = lowerVoltage - upperVoltage;
+
+      const carrier = triangle(x * p.carrierRatio);
+      const pulse = cells[0] > 0 ? 1 : 0;
+      return { ref, carrier, pulse, voltage, cells, cellDcVoltage };
+    };
+
+    const mixed = (x, p, activeMode) => activeMode === "pscpwm" ? pscPwm(x, p) : spwm(x, p);
+
+    const averageSeries = (series, windowSamples) => {
+      const output = [];
+      let sum = 0;
+      const queue = [];
+      for (const value of series) {
+        queue.push(value);
+        sum += value;
+        if (queue.length > windowSamples) sum -= queue.shift();
+        output.push(sum / queue.length);
+      }
+      return output;
+    };
+
+    let ui = { tickSize: 11, labelSize: 13, keySize: 12, yOffset: 40, keyItemW: 128 };
+
+    const formatNumber = (value, digits = 1) => {
+      const rounded = Number(value.toFixed(digits));
+      return String(rounded);
+    };
+
+    const drawGrid = (plot, axis = {}) => {
+      ctx.strokeStyle = colors.grid;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i <= 8; i += 1) {
+        const x = plot.x + plot.w * i / 8;
+        ctx.moveTo(x, plot.y);
+        ctx.lineTo(x, plot.y + plot.h);
+      }
+      for (let i = 0; i <= 4; i += 1) {
+        const y = plot.y + plot.h * i / 4;
+        ctx.moveTo(plot.x, y);
+        ctx.lineTo(plot.x + plot.w, y);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = colors.muted;
+      ctx.font = `700 ${ui.tickSize}px Segoe UI, Yu Gothic UI, sans-serif`;
+      ctx.textBaseline = "middle";
+
+      if (axis.yLabel) {
+        ctx.textBaseline = "alphabetic";
+        ctx.textAlign = "right";
+        ctx.fillText(axis.yLabel, plot.x + plot.w, plot.y - 10);
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+      }
+
+      if (axis.yTicks) {
+        axis.yTicks.forEach((tick) => {
+          const y = plot.y + plot.h / 2 - (tick.value / axis.range) * plot.h * 0.42;
+          ctx.fillText(tick.label, plot.x - ui.yOffset, y);
+        });
+      }
+
+      if (axis.showTime) {
+        const periodMs = 1000 / axis.fundamental;
+        ctx.textBaseline = "top";
+        [
+          { x: 0, label: "0 ms" },
+          { x: 0.5, label: `${formatNumber(periodMs / 2)} ms` },
+          { x: 1, label: `${formatNumber(periodMs)} ms` }
+        ].forEach((tick) => {
+          const x = plot.x + plot.w * tick.x;
+          const align = tick.x === 0 ? "left" : tick.x === 1 ? "right" : "center";
+          ctx.textAlign = align;
+          ctx.fillText(tick.label, x, plot.y + plot.h + 4);
+        });
+        ctx.textAlign = "right";
+        ctx.fillText("時間", plot.x + plot.w, plot.y + plot.h + 18);
+        ctx.textAlign = "left";
+      }
+    };
+
+    const drawLabel = (text, x, y) => {
+      ctx.fillStyle = colors.muted;
+      ctx.font = `700 ${ui.labelSize}px Segoe UI, Yu Gothic UI, sans-serif`;
+      ctx.fillText(text, x, y);
+    };
+
+    const drawSeriesKey = (items, x, y) => {
+      ctx.textBaseline = "middle";
+      ctx.font = `700 ${ui.keySize}px Segoe UI, Yu Gothic UI, sans-serif`;
+      let cursor = x;
+      items.forEach((item) => {
+        ctx.strokeStyle = item.color;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(cursor, y);
+        ctx.lineTo(cursor + 20, y);
+        ctx.stroke();
+        ctx.fillStyle = colors.muted;
+        ctx.fillText(item.label, cursor + 26, y);
+        cursor += (item.width || ui.keyItemW) * (ui.keySize / 12);
+      });
+      ctx.textBaseline = "alphabetic";
+    };
+
+    const drawLine = (points, plot, range, color, width = 2) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      points.forEach((value, index) => {
+        const x = plot.x + plot.w * index / (points.length - 1);
+        const y = plot.y + plot.h / 2 - (value / range) * plot.h * 0.42;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    };
+
+    const drawStep = (points, plot, range, color, width = 2) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      points.forEach((value, index) => {
+        const x = plot.x + plot.w * index / (points.length - 1);
+        const y = plot.y + plot.h / 2 - (value / range) * plot.h * 0.42;
+        if (index === 0) {
+          ctx.moveTo(x, y);
+          return;
+        }
+        const prevY = plot.y + plot.h / 2 - (points[index - 1] / range) * plot.h * 0.42;
+        ctx.lineTo(x, prevY);
+        ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    };
+
+    const drawPulseBand = (points, plot, range, color) => {
+      const center = plot.y + plot.h / 2;
+      ctx.fillStyle = color;
+      points.forEach((value, index) => {
+        const x = plot.x + plot.w * index / points.length;
+        const w = Math.ceil(plot.w / points.length) + 1;
+        const normalized = value / range;
+        const y = center - normalized * plot.h * 0.38;
+        const h = Math.max(2, Math.abs(center - y));
+        ctx.fillRect(x, Math.min(center, y), w, h);
+      });
+    };
+
+    const collectSeries = (activeMode, p, samples = 900) => {
+      const ref = [];
+      const carrier = [];
+      const pulse = [];
+      const voltage = [];
+      const cellSeries = Array.from({ length: activeMode === "pscpwm" ? p.cells : 1 }, () => []);
+
+      for (let i = 0; i < samples; i += 1) {
+        const x = i / (samples - 1);
+        const sample = mixed(x, p, activeMode);
+        ref.push(sample.ref);
+        carrier.push(sample.carrier);
+        pulse.push(sample.pulse);
+        voltage.push(sample.voltage);
+        sample.cells.forEach((value, cellIndex) => cellSeries[cellIndex].push(value));
+      }
+
+      return { ref, carrier, pulse, voltage, cellSeries };
+    };
+
+    const drawMode = (activeMode, area, title, p) => {
+      const series = collectSeries(activeMode, p, 900);
+      const maxVoltage = p.dcVoltage;
+      const cellDcVoltage = activeMode === "pscpwm" ? p.dcVoltage / p.cells : p.dcVoltage;
+      const averaged = averageSeries(series.voltage, Math.max(3, Math.round(series.voltage.length * p.filter)));
+      const plotGap = 34;
+      const topH = area.h * 0.28;
+      const pulseH = area.h * 0.2;
+      const bottomH = area.h - topH - pulseH - plotGap * 2;
+      const top = { x: area.x, y: area.y, w: area.w, h: topH };
+      const pulse = { x: area.x, y: top.y + top.h + plotGap, w: area.w, h: pulseH };
+      const bottom = { x: area.x, y: pulse.y + pulse.h + plotGap, w: area.w, h: bottomH };
+
+      drawLabel(title, area.x, area.y - 8);
+      drawGrid(top, {
+        yLabel: "参照波 / キャリア",
+        range: 1.2,
+        yTicks: [
+          { value: 1, label: "+1" },
+          { value: 0, label: "0" },
+          { value: -1, label: "-1" }
+        ],
+        fundamental: p.fundamental
+      });
+      drawLine(series.ref, top, 1.2, colors.sine, 2.3);
+      if (p.showCarriers) {
+        if (activeMode === "pscpwm") {
+          for (let i = 0; i < p.cells; i += 1) {
+            const shifted = series.carrier.map((_, index) => triangle(index / (series.carrier.length - 1) * p.carrierRatio + i / p.cells));
+            drawLine(shifted, top, 1.2, colors.cell[i % colors.cell.length], 1.5);
+          }
+        } else {
+          drawLine(series.carrier, top, 1.2, colors.carrier, 1.7);
+        }
+      }
+
+      if (activeMode === "pscpwm") {
+        drawGrid(pulse, {
+          yLabel: "ゲート信号 (全セル)",
+          range: 0.6,
+          yTicks: [{ value: 0.5, label: "ON" }, { value: -0.5, label: "OFF" }],
+          fundamental: p.fundamental
+        });
+        series.cellSeries.forEach((cellValues, i) => {
+          drawStep(cellValues.map(v => v > 0 ? 0.5 : -0.5), pulse, 0.6, colors.cell[i % colors.cell.length], 1.5);
+        });
+      } else {
+        drawGrid(pulse, {
+          yLabel: "ゲート信号",
+          range: 0.6,
+          yTicks: [{ value: 0.5, label: "ON" }, { value: -0.5, label: "OFF" }],
+          fundamental: p.fundamental
+        });
+        drawStep(series.pulse.map(v => v - 0.5), pulse, 0.6, colors.carrier, 2);
+      }
+
+
+      drawGrid(bottom, {
+        yLabel: activeMode === "pscpwm" ? "出力電圧 (上下アーム差) [V]" : "出力電圧 [V]",
+        range: maxVoltage * 1.15,
+        yTicks: [
+          { value: maxVoltage, label: `+${formatNumber(maxVoltage)}` },
+          { value: 0, label: "0" },
+          { value: -maxVoltage, label: `-${formatNumber(maxVoltage)}` }
+        ],
+        showTime: true,
+        fundamental: p.fundamental
+      });
+      drawStep(series.voltage, bottom, maxVoltage * 1.15, colors.voltage, 2.2);
+      drawLine(averaged, bottom, maxVoltage * 1.15, colors.filtered, 2.4);
+    };
+
+    const drawCompare = (area, p) => {
+      const spwmSeries = collectSeries("spwm", p, 900);
+      const pscSeries = collectSeries("pscpwm", p, 900);
+      const spwmAverage = averageSeries(spwmSeries.voltage, Math.max(3, Math.round(spwmSeries.voltage.length * p.filter)));
+      const pscAverage = averageSeries(pscSeries.voltage, Math.max(3, Math.round(pscSeries.voltage.length * p.filter)));
+      const gap = 36;
+      // gate and voltage are half height; carrier and average take the rest equally
+      const unit  = (area.h - gap * 3) / 8;
+      const smallH = unit;
+      const bigH   = unit * 3;
+      const carrierPlot = { x: area.x, y: area.y,                             w: area.w, h: bigH   };
+      const gateLane    = { x: area.x, y: carrierPlot.y + bigH   + gap,       w: area.w, h: smallH };
+      const voltagePlot = { x: area.x, y: gateLane.y    + smallH + gap,       w: area.w, h: smallH };
+      const averagePlot = { x: area.x, y: voltagePlot.y + smallH + gap,       w: area.w, h: bigH   };
+
+      drawSeriesKey([
+        { label: "正弦波PWM", color: colors.sine, width: 130 },
+        { label: "位相シフトPWM", color: colors.carrier, width: 160 }
+      ], area.x, area.y - 10);
+      drawGrid(carrierPlot, {
+        yLabel: "参照波",
+        range: 1.2,
+        yTicks: [
+          { value: 1, label: "+1" },
+          { value: 0, label: "0" },
+          { value: -1, label: "-1" }
+        ],
+        fundamental: p.fundamental
+      });
+      drawLine(spwmSeries.ref, carrierPlot, 1.2, colors.sine, 2.2);
+
+      drawGrid(gateLane, {
+        yLabel: "ゲート信号",
+        range: 0.6,
+        yTicks: [{ value: 0.5, label: "ON" }, { value: -0.5, label: "OFF" }],
+        fundamental: p.fundamental
+      });
+      drawStep(spwmSeries.pulse.map(v => v - 0.5), gateLane, 0.6, colors.sine, 2);
+      pscSeries.cellSeries.forEach((cellValues) => {
+        drawStep(cellValues.map(v => v > 0 ? 0.5 : -0.5), gateLane, 0.6, colors.carrier, 1.5);
+      });
+
+      drawGrid(voltagePlot, {
+        yLabel: "出力電圧 [V]",
+        range: p.dcVoltage * 1.15,
+        yTicks: [
+          { value: p.dcVoltage, label: `+${p.dcVoltage}` },
+          { value: 0, label: "0" },
+          { value: -p.dcVoltage, label: `-${p.dcVoltage}` }
+        ],
+        fundamental: p.fundamental
+      });
+      drawStep(spwmSeries.voltage, voltagePlot, p.dcVoltage * 1.15, colors.sine, 1.9);
+      drawStep(pscSeries.voltage, voltagePlot, p.dcVoltage * 1.15, colors.carrier, 1.9);
+
+      drawGrid(averagePlot, {
+        yLabel: "平均電圧 [V]",
+        range: p.dcVoltage * 1.15,
+        yTicks: [
+          { value: p.dcVoltage, label: `+${p.dcVoltage}` },
+          { value: 0, label: "0" },
+          { value: -p.dcVoltage, label: `-${p.dcVoltage}` }
+        ],
+        showTime: true,
+        fundamental: p.fundamental
+      });
+      drawLine(spwmAverage, averagePlot, p.dcVoltage * 1.15, colors.sine, 2.4);
+      drawLine(pscAverage, averagePlot, p.dcVoltage * 1.15, colors.carrier, 2.4);
+    };
+
+    const resizeCanvas = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const w = rect.width  || canvas.offsetWidth;
+      const h = rect.height || canvas.offsetHeight;
+      canvas.width  = Math.max(280, Math.floor(w * dpr));
+      canvas.height = Math.max(300, Math.floor(h * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const updateLabels = (p) => {
+      labels.modulation.textContent = p.modulation.toFixed(2);
+      labels.fundamental.textContent = `${p.fundamental} Hz`;
+      labels.carrierFrequency.textContent = `${Math.round(p.carrierFrequency)} Hz`;
+      labels.cells.textContent = String(p.cells);
+      labels.dcVoltage.textContent = `${p.dcVoltage} V`;
+      labels.filter.textContent = `${p.filter.toFixed(2)} 周期`;
+      const isPsc = mode === "pscpwm" || mode === "compare";
+      const freqMult = isPsc ? p.cells : 1;
+      labels.switchFreq.textContent = `${Math.round(p.carrierFrequency * freqMult)} Hz`;
+      labels.levels.textContent = isPsc ? String(p.cells * 2 + 1) : "2";
+      const cellVdc = isPsc ? p.dcVoltage / p.cells : p.dcVoltage;
+      labels.peakVoltage.textContent = isPsc ? `${formatNumber(cellVdc)} V / セル` : `${p.dcVoltage} V`;
+      labels.phaseStep.textContent = isPsc
+        ? `${Math.round(360 / p.cells)}°`
+        : "0°";
+      labels.carrierRatio.textContent = formatNumber(p.carrierRatio, 1);
+
+      if (mode === "spwm") {
+        labels.title.textContent = "正弦波PWM";
+        labels.meta.textContent = "正弦参照波と三角キャリアの比較でパルス幅が決まります";
+      } else if (mode === "pscpwm") {
+        labels.title.textContent = "位相シフトキャリアPWM";
+        labels.meta.textContent = "位相をずらした複数キャリアでセル電圧を合成します";
+      } else {
+        labels.title.textContent = "PWM比較";
+        labels.meta.textContent = "参照波、ゲート、出力電圧、平均電圧を項目ごとに比較します";
+      }
+    };
+
+    const render = () => {
+      resizeCanvas();
+      const p = getParams();
+      updateLabels(p);
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+
+      const small = width < 520;
+      ui.tickSize  = small ? 9  : 11;
+      ui.labelSize = small ? 10 : 13;
+      ui.keySize   = small ? 9  : 12;
+      ui.yOffset   = small ? 30 : 40;
+      ui.keyItemW  = small ? 90 : 128;
+
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, width, height);
+
+      const margin = { x: small ? 48 : 86, y: small ? 40 : 66 };
+      if (mode === "compare") {
+        drawCompare({ x: margin.x, y: margin.y, w: width - margin.x * 2, h: height - margin.y * 2 }, p);
+      } else {
+        drawMode(mode, { x: margin.x, y: margin.y, w: width - margin.x * 2, h: height - margin.y * 2 }, labels.title.textContent, p);
+      }
+    };
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach((item) => item.classList.remove("active"));
+        tab.classList.add("active");
+        mode = tab.dataset.mode;
+        requestAnimationFrame(render);
+      });
+    });
+
+    Object.values(controls).forEach((control) => {
+      control.addEventListener("input", render);
+      control.addEventListener("change", render);
+    });
+
+    window.addEventListener("resize", render);
+    render();
+  </script>
+</body>
+</html>

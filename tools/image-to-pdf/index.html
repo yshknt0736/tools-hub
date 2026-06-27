@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>画像フォルダ → PDF</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      color: #1a1a2e;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+    }
+
+    #drop-zone {
+      width: min(480px, 100%);
+      border: 2.5px dashed #b0b8c8;
+      border-radius: 16px;
+      padding: 3.5rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #fff;
+      user-select: none;
+    }
+
+    #drop-zone.drag-over {
+      border-color: #4f6ef7;
+      background: #f0f3ff;
+      transform: scale(1.01);
+    }
+
+    #drop-zone .icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    #drop-zone p {
+      color: #555;
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    #drop-zone .hint {
+      font-size: 0.8rem;
+      color: #aaa;
+      margin-top: 0.5rem;
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    #status {
+      width: min(480px, 100%);
+      margin-top: 1.5rem;
+      display: none;
+    }
+
+    .file-list {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1rem 1.2rem;
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid #e8eaf0;
+      margin-bottom: 1rem;
+    }
+
+    .file-list-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #888;
+      margin-bottom: 0.6rem;
+    }
+
+    .file-item {
+      font-size: 0.85rem;
+      color: #333;
+      padding: 0.25rem 0;
+      border-bottom: 1px solid #f0f0f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-item:last-child { border-bottom: none; }
+
+    .file-count {
+      font-size: 0.8rem;
+      color: #888;
+      margin-bottom: 0.8rem;
+      text-align: right;
+    }
+
+    #progress-wrap {
+      display: none;
+      margin-bottom: 1rem;
+    }
+
+    progress {
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      appearance: none;
+      overflow: hidden;
+    }
+
+    progress::-webkit-progress-bar { background: #e8eaf0; border-radius: 999px; }
+    progress::-webkit-progress-value { background: #4f6ef7; border-radius: 999px; transition: width 0.1s; }
+
+    .progress-label {
+      font-size: 0.8rem;
+      color: #666;
+      margin-top: 0.4rem;
+      text-align: center;
+    }
+
+    #btn-generate {
+      width: 100%;
+      padding: 0.85rem;
+      background: #4f6ef7;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    #btn-generate:hover { background: #3a58e0; }
+    #btn-generate:active { transform: scale(0.98); }
+    #btn-generate:disabled { background: #b0b8c8; cursor: not-allowed; transform: none; }
+
+    #btn-reset {
+      width: 100%;
+      margin-top: 0.6rem;
+      padding: 0.6rem;
+      background: transparent;
+      color: #888;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    #btn-reset:hover { color: #444; border-color: #aaa; }
+
+    .error-msg {
+      color: #e05252;
+      font-size: 0.85rem;
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>画像フォルダ → PDF</h1>
+  <p class="subtitle">フォルダをドロップするか、クリックして選択してください</p>
+
+  <div id="drop-zone">
+    <span class="icon">🗂️</span>
+    <p>フォルダをここにドラッグ＆ドロップ</p>
+    <p class="hint">対応形式: JPG · PNG · GIF · WebP · BMP</p>
+    <input type="file" id="file-input" webkitdirectory multiple accept="image/*">
+  </div>
+
+  <div id="status">
+    <div class="file-list">
+      <div class="file-list-title">検出した画像</div>
+      <div id="file-items"></div>
+    </div>
+    <div class="file-count" id="file-count"></div>
+    <div id="progress-wrap">
+      <progress id="progress" value="0" max="100"></progress>
+      <div class="progress-label" id="progress-label">処理中...</div>
+    </div>
+    <button id="btn-generate">PDFを生成してダウンロード</button>
+    <button id="btn-reset">リセット</button>
+    <div class="error-msg" id="error-msg"></div>
+  </div>
+
+  <script>
+    const SUPPORTED = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp'];
+    const SUPPORTED_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+
+    function isSupportedImage(file) {
+      if (file.type && SUPPORTED.includes(file.type)) return true;
+      const ext = file.name.split('.').pop().toLowerCase();
+      return SUPPORTED_EXT.includes(ext);
+    }
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const statusEl = document.getElementById('status');
+    const fileItemsEl = document.getElementById('file-items');
+    const fileCountEl = document.getElementById('file-count');
+    const progressWrap = document.getElementById('progress-wrap');
+    const progressEl = document.getElementById('progress');
+    const progressLabel = document.getElementById('progress-label');
+    const btnGenerate = document.getElementById('btn-generate');
+    const btnReset = document.getElementById('btn-reset');
+    const errorMsg = document.getElementById('error-msg');
+
+    let imageFiles = [];
+    let folderName = '';
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const items = e.dataTransfer.items;
+      // entries は drop イベント中に同期取得する必要がある
+      const entries = [];
+      if (items) {
+        for (const item of items) {
+          const entry = item.webkitGetAsEntry?.();
+          if (entry) entries.push(entry);
+        }
+      }
+
+      if (entries.length) {
+        // ドロップされた最上位ディレクトリ名をPDF名に使う
+        const dir = entries.find(en => en.isDirectory);
+        folderName = dir ? dir.name : '';
+        collectFromEntries(entries);
+      } else {
+        // フォルダ走査が使えない環境向けのフォールバック
+        folderName = '';
+        const files = Array.from(e.dataTransfer.files || []).filter(isSupportedImage);
+        setFiles(files);
+      }
+    });
+
+    fileInput.addEventListener('change', () => {
+      const files = Array.from(fileInput.files).filter(isSupportedImage);
+      // webkitRelativePath の先頭セグメントが選択フォルダ名
+      const rel = files[0]?.webkitRelativePath || '';
+      folderName = rel.includes('/') ? rel.split('/')[0] : '';
+      setFiles(files);
+    });
+
+    async function collectFromEntries(entries) {
+      const files = [];
+      for (const entry of entries) {
+        await traverseEntry(entry, files);
+      }
+      setFiles(files);
+    }
+
+    let skippedCount = 0;
+
+    function traverseEntry(entry, files) {
+      return new Promise(resolve => {
+        if (entry.isFile) {
+          // エラーコールバックを必ず渡す（iCloud等のクラウド専用ファイルで
+          // 成功コールバックが発火せずハングするのを防ぐ）
+          entry.file(
+            file => {
+              if (isSupportedImage(file)) files.push(file);
+              resolve();
+            },
+            err => {
+              console.warn('file() failed:', entry.name, err);
+              skippedCount++;
+              resolve();
+            }
+          );
+        } else if (entry.isDirectory) {
+          const reader = entry.createReader();
+          const readAll = (cb) => {
+            reader.readEntries(
+              async results => {
+                if (!results.length) { cb(); return; }
+                for (const e of results) await traverseEntry(e, files);
+                readAll(cb);
+              },
+              err => {
+                console.warn('readEntries failed:', entry.name, err);
+                cb();
+              }
+            );
+          };
+          readAll(resolve);
+        } else {
+          resolve();
+        }
+      });
+    }
+
+    function naturalCompare(a, b) {
+      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    }
+
+    function setFiles(files) {
+      imageFiles = files.sort(naturalCompare);
+      if (!imageFiles.length) {
+        // ドロップゾーンを表示したままエラーを出す（statusは非表示のため）
+        dropZone.style.display = '';
+        statusEl.style.display = 'none';
+        const extra = skippedCount
+          ? `（${skippedCount} 件のファイルは読み取れませんでした。iCloud等でクラウド上のみの可能性があります）`
+          : '';
+        dropZoneError(`対応画像が見つかりませんでした。${extra}`);
+        skippedCount = 0;
+        return;
+      }
+      errorMsg.textContent = '';
+      fileItemsEl.innerHTML = imageFiles.map(f =>
+        `<div class="file-item">${f.name}</div>`
+      ).join('');
+      fileCountEl.textContent = skippedCount
+        ? `${imageFiles.length} 枚の画像（${skippedCount} 件を読み取り不可でスキップ）`
+        : `${imageFiles.length} 枚の画像`;
+      skippedCount = 0;
+      dropZone.style.display = 'none';
+      statusEl.style.display = 'block';
+      progressWrap.style.display = 'none';
+    }
+
+    function dropZoneError(msg) {
+      let el = document.getElementById('dz-error');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'dz-error';
+        el.className = 'error-msg';
+        el.style.marginTop = '1rem';
+        dropZone.after(el);
+      }
+      el.textContent = msg;
+    }
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+    }
+
+    btnReset.addEventListener('click', () => {
+      imageFiles = [];
+      fileInput.value = '';
+      dropZone.style.display = '';
+      statusEl.style.display = 'none';
+      errorMsg.textContent = '';
+      btnGenerate.disabled = false;
+    });
+
+    btnGenerate.addEventListener('click', async () => {
+      if (!imageFiles.length) return;
+      btnGenerate.disabled = true;
+      progressWrap.style.display = 'block';
+      errorMsg.textContent = '';
+
+      try {
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ unit: 'pt', compress: true });
+        const A4_W = 595.28, A4_H = 841.89;
+
+        for (let i = 0; i < imageFiles.length; i++) {
+          const file = imageFiles[i];
+          progressLabel.textContent = `処理中 ${i + 1} / ${imageFiles.length}：${file.name}`;
+          progressEl.value = Math.round((i / imageFiles.length) * 100);
+
+          const dataUrl = await readAsDataURL(file);
+          const { w, h } = await getImageDimensions(dataUrl);
+
+          const ratio = Math.min(A4_W / w, A4_H / h, 1);
+          const dw = w * ratio, dh = h * ratio;
+          const x = (A4_W - dw) / 2, y = (A4_H - dh) / 2;
+
+          if (i > 0) pdf.addPage();
+          const fmt = file.type === 'image/png' ? 'PNG' : 'JPEG';
+          pdf.addImage(dataUrl, fmt, x, y, dw, dh, undefined, 'FAST');
+        }
+
+        progressEl.value = 100;
+        progressLabel.textContent = '完了！ダウンロードを開始します…';
+        const safeName = (folderName || 'images')
+          .replace(/[\\/:*?"<>|]/g, '_').trim() || 'images';
+        pdf.save(safeName + '.pdf');
+      } catch (err) {
+        showError('PDF生成中にエラーが発生しました: ' + err.message);
+        console.error(err);
+      } finally {
+        btnGenerate.disabled = false;
+      }
+    });
+
+    function readAsDataURL(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function getImageDimensions(dataUrl) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
+    }
+  </script>
+</body>
+</html>
