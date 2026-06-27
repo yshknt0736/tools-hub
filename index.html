@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tools Hub — 便利ツール集</title>
+  <meta name="description" content="日々の作業を助ける軽量ツール集" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>🧰 Tools Hub</h1>
+      <p class="tagline">日々の作業を助ける、軽量で高速なツール集</p>
+      <button id="theme-toggle" class="theme-toggle" aria-label="テーマ切替">🌙</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="controls">
+      <input id="search" type="search" placeholder="🔍 ツールを検索（名前・タグ）…" />
+      <div id="tag-filters" class="tag-filters"></div>
+    </div>
+
+    <section id="tool-grid" class="grid" aria-live="polite"></section>
+    <p id="empty" class="empty" hidden>該当するツールがありません。</p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>© <span id="year"></span> Tools Hub — Built with ❤ &amp; hosted on GitHub Pages</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

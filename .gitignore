@@ -1,0 +1,13 @@
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.pyc
+
+# Test data
+test_data.csv
+big_test.csv
+blank_head_test.csv
