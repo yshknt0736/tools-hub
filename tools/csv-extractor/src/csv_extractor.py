@@ -122,6 +122,16 @@ class App(tk.Tk):
         self._status = ttk.Label(af, text="")
         self._status.pack(side="right")
 
+        # ── 列の値で分割 ─────────────────────────────────────────────────
+        sf = ttk.LabelFrame(self, text="列の値で分割して書き出し", padding=8)
+        sf.pack(fill="x", padx=8, pady=4)
+        ttk.Label(sf, text="基準列:").pack(side="left")
+        self._split_col = ttk.Combobox(sf, width=28, state="readonly")
+        self._split_col.pack(side="left", padx=6)
+        ttk.Button(sf, text="フォルダに分割出力…", command=self._split_export).pack(side="left", padx=6)
+        ttk.Label(sf, text="基準列の値ごとに 1 ファイルずつ出力します。",
+                  foreground="gray").pack(side="left", padx=6)
+
         # ── プレビューテーブル ────────────────────────────────────────────
         pf = ttk.LabelFrame(self, text="プレビュー", padding=4)
         pf.pack(fill="both", expand=True, padx=8, pady=4)
@@ -201,6 +211,13 @@ class App(tk.Tk):
             label = col if col.strip() else f"(列{i + 1})"
             ttk.Checkbutton(self._col_inner, text=label, variable=var).grid(
                 row=i // COLS_PER_ROW, column=i % COLS_PER_ROW, sticky="w", padx=6, pady=1)
+
+        # 分割の基準列リスト（重複名でも一意になるよう "位置: 名前" 形式）
+        choices = [f"{i + 1}: {c if c.strip() else f'(列{i + 1})'}"
+                   for i, c in enumerate(self._columns)]
+        self._split_col["values"] = choices
+        if choices:
+            self._split_col.current(0)
 
     # ---------------------------------------------------------------- 抽出コア --
 
@@ -291,6 +308,94 @@ class App(tk.Tk):
             self.after(0, lambda: self._on_export_done(out_path, count))
         except Exception as e:
             self.after(0, lambda: self._on_error(str(e)))
+
+    # ---------------------------------------------------------------- 列の値で分割 --
+
+    def _split_export(self):
+        if not self._path:
+            messagebox.showwarning("警告", "ファイルを開いてください。")
+            return
+        sel = self._split_col.get()
+        if not sel:
+            messagebox.showwarning("警告", "基準列を選択してください。")
+            return
+        out_dir = filedialog.askdirectory(title="分割ファイルの出力先フォルダを選択")
+        if not out_dir:
+            return
+        key_idx = int(sel.split(":", 1)[0]) - 1  # "3: 部署" -> 2
+        self._cancel.clear()
+        self._set_status("分割書き出し中…", busy=True)
+        threading.Thread(target=self._split_thread, args=(out_dir, key_idx), daemon=True).start()
+
+    def _split_thread(self, out_dir: str, key_idx: int):
+        import os
+        writers: dict[str, tuple] = {}   # key値 -> (ファイルハンドル, csv.writer)
+        try:
+            col_idx = self._selected_indices()
+            row_set = parse_row_ranges(self._row_var.get())
+            header = [self._columns[i] for i in col_idx]
+            enc = self._encoding.get()
+            used_names: dict[str, str] = {}  # サニタイズ後名 -> 元key（衝突検出用）
+            total = 0
+
+            with open(self._path, "r", encoding=enc, newline="", errors="replace") as f:
+                reader = csv.reader(f, self._dialect)
+                for _ in range(self._skip_lines):
+                    next(reader, None)
+                for data_idx, row in enumerate(reader):
+                    if self._cancel.is_set():
+                        break
+                    if row_set is not None and data_idx not in row_set:
+                        continue
+                    key = row[key_idx] if key_idx < len(row) else ""
+
+                    if key not in writers:
+                        if len(writers) >= 2000:
+                            raise ValueError(
+                                "基準列の異なる値が 2000 を超えました。"
+                                "分割数が多すぎます。別の列を選んでください。")
+                        fname = self._safe_filename(key, used_names)
+                        fh = open(os.path.join(out_dir, fname), "w",
+                                  encoding="utf-8-sig", newline="")
+                        w = csv.writer(fh)
+                        w.writerow(header)
+                        writers[key] = (fh, w)
+
+                    writers[key][1].writerow(
+                        [row[i] if i < len(row) else "" for i in col_idx])
+                    total += 1
+                    if total % 100_000 == 0:
+                        self.after(0, lambda t=total, g=len(writers): self._status.config(
+                            text=f"分割中… {t:,} 行 / {g} ファイル"))
+        except Exception as e:
+            for fh, _ in writers.values():
+                fh.close()
+            self.after(0, lambda: self._on_error(str(e)))
+            return
+
+        n_files = len(writers)
+        for fh, _ in writers.values():
+            fh.close()
+        self.after(0, lambda: self._on_split_done(out_dir, n_files, total))
+
+    @staticmethod
+    def _safe_filename(key: str, used: dict) -> str:
+        """key値を安全なファイル名に変換。空や衝突も処理。"""
+        name = key.strip() or "（空）"
+        for ch in '\\/:*?"<>|':
+            name = name.replace(ch, "_")
+        name = name[:100]  # 長すぎる値を抑制
+        base, n = name, 1
+        while name in used and used[name] != key:
+            name = f"{base}_{n}"
+            n += 1
+        used[name] = key
+        return name + ".csv"
+
+    def _on_split_done(self, out_dir: str, n_files: int, total: int):
+        self._set_status("分割完了 ✓", busy=False)
+        messagebox.showinfo(
+            "完了", f"{total:,} 行を {n_files} 個のファイルに分割しました:\n{out_dir}")
 
     def _on_export_done(self, path: str, count: int):
         self._set_status("書き出し完了 ✓", busy=False)
