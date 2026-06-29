@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>関数電卓</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f3;
+      --panel: #ffffff;
+      --ink: #18211d;
+      --muted: #5a665f;
+      --line: #d8ded8;
+      --accent: #0f7b78;
+      --accent-2: #c2553a;
+      --soft: #e7f3ef;
+      --key: #ffffff;
+      --key-hover: #eef3f0;
+      --key-num: #fbfcfb;
+      --shadow: 0 16px 44px rgba(28, 40, 35, 0.13);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(244, 246, 243, 0.96), rgba(235, 240, 236, 0.98)),
+        radial-gradient(circle at 84% 10%, rgba(15, 123, 120, 0.12), transparent 30%),
+        #f4f6f3;
+      color: var(--ink);
+      font-family: "Segoe UI", "Yu Gothic UI", Meiryo, system-ui, sans-serif;
+    }
+
+    button, input { font: inherit; }
+    button { border: 0; cursor: pointer; touch-action: manipulation; }
+
+    .app {
+      width: min(1180px, calc(100vw - 28px));
+      margin: 0 auto;
+      padding: 22px 0 34px;
+    }
+
+    header { margin-bottom: 16px; }
+    h1 { margin: 0; font-size: clamp(24px, 3.6vw, 38px); line-height: 1.05; font-weight: 780; }
+    .subtitle { margin: 7px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+      gap: 16px;
+      align-items: start;
+    }
+    @media (max-width: 760px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    /* ---- calculator ---- */
+    .calc { padding: 14px; }
+
+    .display {
+      background: #1c2b26;
+      color: #eef3ef;
+      border-radius: 10px;
+      padding: 12px 14px;
+      min-height: 92px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 4px;
+    }
+    .expr {
+      position: relative;
+      font-size: 22px;
+      line-height: 1.25;
+      min-height: 52px;
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      justify-content: flex-end;
+      overflow-x: auto;
+      overflow-y: hidden;
+      direction: ltr;
+      font-variant-numeric: tabular-nums;
+      scrollbar-width: none;          /* hide scrollbar (scrolling still works) */
+      -ms-overflow-style: none;
+      cursor: text;
+      user-select: none;
+    }
+    .expr::-webkit-scrollbar { display: none; }
+    .expr .ph { color: rgba(238,243,239,.4); }
+    .expr .cell { white-space: pre; display: inline-block; }
+    /* natural-display fraction inside the input line */
+    .disp-frac { display: inline-flex; align-items: center; }
+    .disp-col { display: inline-flex; flex-direction: column; align-items: center; padding: 0 2px; }
+    .disp-num, .disp-den { display: flex; justify-content: center; align-items: center; font-size: .8em; line-height: 1.05; padding: 0 3px; min-height: 1em; }
+    .disp-bar { align-self: stretch; height: 1px; background: currentColor; margin: 1px 0; opacity: .9; cursor: pointer; }
+    /* empty numerator/denominator box shown while typing (Casio-style) */
+    .fbox { display: inline-block; width: .72em; height: .96em; border: 1px dashed rgba(238, 243, 239, .4); border-radius: 2px; }
+    /* blinking caret */
+    .caret {
+      display: inline-block; width: 0; height: 1.05em; vertical-align: middle;
+      border-left: 2px solid #8fe3c9; margin: 0 -1px;
+      animation: blink 1.05s step-end infinite;
+    }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    .preview {
+      font-size: 26px;
+      font-weight: 760;
+      text-align: right;
+      color: #8fe3c9;
+      min-height: 36px;
+      font-variant-numeric: tabular-nums;
+      overflow-x: auto;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+    .preview.error { color: #f0a48c; font-size: 17px; font-weight: 600; }
+
+    /* stacked fraction for results / history */
+    .frac { display: inline-flex; align-items: center; vertical-align: middle; }
+    .frac .fsign { margin-right: .12em; }
+    .frac .fcol { display: inline-flex; flex-direction: column; align-items: center; }
+    .frac .fnum, .frac .fden { display: block; padding: 0 .28em; line-height: 1.04; font-size: .8em; }
+    .frac .fbar { width: 100%; height: 1px; background: currentColor; margin: 1px 0; opacity: .9; }
+
+    .mode-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 12px 2px 8px;
+      gap: 10px;
+    }
+    .mode-toggle {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--panel);
+    }
+    .mode-toggle button {
+      padding: 6px 14px;
+      background: var(--panel);
+      color: var(--muted);
+      font-weight: 720;
+      font-size: 13px;
+    }
+    .mode-toggle button.active { background: var(--ink); color: #fff; }
+    .hint { color: var(--muted); font-size: 12px; }
+
+    .keys {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 8px;
+    }
+    .key {
+      grid-column: span 2;
+      min-height: 50px;
+      border-radius: 10px;
+      background: var(--key);
+      border: 1px solid var(--line);
+      color: var(--ink);
+      font-size: 16px;
+      font-weight: 640;
+      transition: background .12s, transform .04s;
+    }
+    .key:hover { background: var(--key-hover); }
+    .key:active { transform: translateY(1px); }
+    .key.fn { background: var(--key-num); color: var(--accent); font-weight: 700; font-size: 14.5px; }
+    .key.fn:hover { background: var(--soft); }
+    .key.num { background: var(--key-num); font-size: 19px; font-weight: 700; }
+    .key.op { background: var(--soft); color: var(--accent); font-weight: 760; }
+    .key.op:hover { background: #d8ece4; }
+    .key.eq { background: var(--accent); color: #fff; }
+    .key.eq:hover { background: #0c6764; }
+    .key.del { background: #fbeee9; color: var(--accent-2); }
+    .key.del:hover { background: #f6e0d8; }
+    .key.root2 { background: #fff3da; color: #9a6512; border-color: #ecd9ad; font-weight: 760; }
+    .key.root2:hover { background: #ffeac0; }
+    .key.frac-key { background: #eaf1ff; color: #3a55a8; border-color: #d4e0fb; font-weight: 760; }
+    .key.frac-key:hover { background: #dde8ff; }
+    .key.sd { background: #f2ecfb; color: #6a48a8; border-color: #e0d4f4; font-weight: 740; font-size: 14px; }
+    .key.sd:hover { background: #e9defa; }
+    .key.nav { background: #eef3f0; color: var(--ink); font-weight: 720; font-size: 18px; }
+    .key.nav:hover { background: #e2eae5; }
+    .key.span1 { grid-column: span 1; }
+
+    /* main numeric pad: clean 4-column layout */
+    .keys-num { grid-template-columns: repeat(4, 1fr); }
+    .keys-num .key { grid-column: span 1; }
+    .keys-num .key.half { grid-column: span 2; }
+    .keys-num .key.wide { grid-column: span 4; }
+
+    .keys-sci { margin-bottom: 8px; }
+
+    /* fraction glyph on the a/b key */
+    .ab { display: inline-flex; flex-direction: column; align-items: center; line-height: 1; }
+    .ab b { font-size: 11px; padding: 0 2px; }
+    .ab i { width: 14px; height: 1px; background: currentColor; margin: 1px 0; font-style: normal; }
+
+    /* ---- history ---- */
+    .history { display: flex; flex-direction: column; height: 100%; }
+    .hist-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 13px 14px; border-bottom: 1px solid var(--line);
+    }
+    .hist-head h2 { margin: 0; font-size: 15px; font-weight: 740; }
+    .hist-head .small {
+      font-size: 12px; color: var(--accent); background: var(--soft);
+      border: 1px solid #cfe6dd; border-radius: 7px; padding: 5px 10px; font-weight: 700;
+    }
+    .hist-head .small:hover { background: #d8ece4; }
+    .hist-list {
+      padding: 8px; overflow-y: auto; flex: 1;
+      max-height: min(640px, 72vh); min-height: 200px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .hist-empty { color: var(--muted); font-size: 13px; padding: 18px 10px; text-align: center; line-height: 1.6; }
+    .hist-item {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 9px 10px;
+      background: #fcfdfc;
+    }
+    .hist-item .line { font-size: 14px; line-height: 1.6; word-break: break-all; display: flex; flex-wrap: wrap; align-items: center; }
+    .hist-item .hexpr { color: var(--muted); display: inline-flex; align-items: center; }
+    .hist-item .hans-btn {
+      background: none; padding: 0; color: var(--accent); font-weight: 740;
+      text-decoration: underline dotted; text-underline-offset: 2px;
+      display: inline-flex; align-items: center; vertical-align: middle;
+    }
+    .hist-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+    .hist-actions button {
+      font-size: 12px; padding: 4px 9px; border-radius: 6px;
+      border: 1px solid var(--line); background: #fff; color: var(--muted); font-weight: 660;
+    }
+    .hist-actions .copy { color: var(--accent); border-color: #cfe6dd; }
+    .hist-actions .copy:hover { background: var(--soft); }
+    .hist-actions .copy.done { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .hist-actions .xl { color: #1d7044; border-color: #bfe0cb; }
+    .hist-actions .xl:hover { background: #e7f5ec; }
+    .hist-actions .xl.done { background: #1d7044; color: #fff; border-color: #1d7044; }
+    .hist-actions .sd-btn { color: #6a48a8; border-color: #e0d4f4; }
+    .hist-actions .sd-btn:hover { background: #f2ecfb; }
+    .hist-actions .reuse:hover { background: var(--key-hover); }
+
+    .toast {
+      position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
+      background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 9px;
+      font-size: 13px; font-weight: 640; opacity: 0; pointer-events: none;
+      transition: opacity .2s, transform .2s; z-index: 50;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>関数電卓</h1>
+      <p class="subtitle">カシオ風の自然表示。分数キーで縦組みの分数を入力し、<b>↑↓キー（または画面の▲▼）で分子・分母を移動</b>、←→で1文字移動、クリックでカーソル配置。約分された分数で答えが出て S⇔D で小数に切替。結果は右側に残り行ごとにコピー可。すべて端末内で処理。</p>
+    </header>
+
+    <div class="layout">
+      <!-- calculator -->
+      <section class="panel calc">
+        <div class="display">
+          <div class="expr" id="expr"></div>
+          <div class="preview" id="preview"></div>
+        </div>
+
+        <div class="mode-row">
+          <div class="mode-toggle" id="modeToggle">
+            <button data-mode="deg" class="active">DEG</button>
+            <button data-mode="rad">RAD</button>
+          </div>
+          <span class="hint">三角関数の角度単位</span>
+        </div>
+
+        <!-- scientific keys -->
+        <div class="keys keys-sci">
+          <button class="key fn" data-ins="sin(">sin</button>
+          <button class="key fn" data-ins="cos(">cos</button>
+          <button class="key fn" data-ins="tan(">tan</button>
+          <button class="key fn" data-ins="π">π</button>
+
+          <button class="key fn" data-ins="asin(">sin⁻¹</button>
+          <button class="key fn" data-ins="acos(">cos⁻¹</button>
+          <button class="key fn" data-ins="atan(">tan⁻¹</button>
+          <button class="key fn" data-ins="e">e</button>
+
+          <button class="key fn" data-ins="ln(">ln</button>
+          <button class="key fn" data-ins="log(">log</button>
+          <button class="key fn" data-ins="^2">x²</button>
+          <button class="key fn" data-ins="^">xʸ</button>
+
+          <button class="key fn" data-ins="√">√</button>
+          <button class="key fn" data-ins="!">x!</button>
+          <button class="key root2" data-ins="√2">√2</button>
+          <button class="key root2" data-ins="√3">√3</button>
+
+          <button class="key frac-key" data-action="frac" title="分数（分子→分数キー→分母）"><span class="ab"><b>a</b><i></i><b>b</b></span></button>
+          <button class="key sd" data-action="sd" title="分数⇔小数 切替 (Sキー)">S⇔D</button>
+          <button class="key nav" data-action="up" title="分子へ移動 (↑)">▲</button>
+          <button class="key nav" data-action="down" title="分母へ移動 (↓)">▼</button>
+        </div>
+
+        <!-- main keypad -->
+        <div class="keys keys-num">
+          <button class="key nav span1" data-action="left" title="カーソルを左へ (←)">◀</button>
+          <button class="key nav span1" data-action="right" title="カーソルを右へ (→)">▶</button>
+          <button class="key del span1" data-action="ac" title="全消去 (Esc)">AC</button>
+          <button class="key del span1" data-action="back" title="1文字削除 (Backspace)">⌫</button>
+
+          <button class="key num" data-ins="7">7</button>
+          <button class="key num" data-ins="8">8</button>
+          <button class="key num" data-ins="9">9</button>
+          <button class="key op" data-ins="÷">÷</button>
+
+          <button class="key num" data-ins="4">4</button>
+          <button class="key num" data-ins="5">5</button>
+          <button class="key num" data-ins="6">6</button>
+          <button class="key op" data-ins="×">×</button>
+
+          <button class="key num" data-ins="1">1</button>
+          <button class="key num" data-ins="2">2</button>
+          <button class="key num" data-ins="3">3</button>
+          <button class="key op" data-ins="−">−</button>
+
+          <button class="key num" data-ins="0">0</button>
+          <button class="key num" data-ins=".">.</button>
+          <button class="key op" data-ins="(">(</button>
+          <button class="key op" data-ins=")">)</button>
+
+          <button class="key op" data-ins="%" title="剰余 (mod)">mod</button>
+          <button class="key op" data-ins="+">+</button>
+          <button class="key eq" data-action="equals" title="計算 (Enter)" style="grid-column: span 2;">=</button>
+        </div>
+      </section>
+
+      <!-- history -->
+      <section class="panel history">
+        <div class="hist-head">
+          <h2>計算結果</h2>
+          <button class="small" id="clearHist">履歴クリア</button>
+        </div>
+        <div class="hist-list" id="histList">
+          <div class="hist-empty" id="histEmpty">まだ計算結果はありません。<br>「=」または Enter で計算するとここに残ります。</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  (function () {
+    "use strict";
+
+    const exprEl = document.getElementById("expr");
+    const previewEl = document.getElementById("preview");
+    const histList = document.getElementById("histList");
+    const histEmpty = document.getElementById("histEmpty");
+    const toastEl = document.getElementById("toast");
+
+    // The expression is a flat token stream. A token is either a 1-char string,
+    // or a fraction marker object: {m:"fo"} open, {m:"fs"} separator, {m:"fc"} close.
+    // A fraction spans fo … fs … fc ; numerator = (fo,fs), denominator = (fs,fc).
+    let toks = [];
+    let caret = 0;                   // 0..toks.length (sits before toks[caret])
+    let degMode = true;
+    let preferFraction = true;
+    let history = [];
+
+    /* ===================== exact rational (BigInt) ===================== */
+
+    function bgcd(a, b) { a = a < 0n ? -a : a; b = b < 0n ? -b : b; while (b) { [a, b] = [b, a % b]; } return a; }
+    function R(n, d) {
+      if (d === 0n) throw new Error("0で割れません");
+      if (d < 0n) { n = -n; d = -d; }
+      const g = bgcd(n, d) || 1n;
+      return { n: n / g, d: d / g };
+    }
+    function ratFromDecimal(raw) {
+      if (raw.indexOf(".") < 0) return R(BigInt(raw), 1n);
+      const parts = raw.split(".");
+      const ip = parts[0] === "" ? "0" : parts[0];
+      const fp = parts[1] || "";
+      return R(BigInt(ip + fp), 10n ** BigInt(fp.length));
+    }
+    function isqrtBig(n) {
+      if (n < 0n) throw new Error("負数の平方根");
+      if (n < 2n) return n;
+      let x = n, y = (x + 1n) / 2n;
+      while (y < x) { x = y; y = (x + n / x) / 2n; }
+      return x;
+    }
+    const NR = () => { throw new Error("NotRational"); };
+    const ratOps = {
+      fromNum: t => ratFromDecimal(t.raw),
+      add: (a, b) => R(a.n * b.d + b.n * a.d, a.d * b.d),
+      sub: (a, b) => R(a.n * b.d - b.n * a.d, a.d * b.d),
+      mul: (a, b) => R(a.n * b.n, a.d * b.d),
+      div: (a, b) => R(a.n * b.d, a.d * b.n),
+      neg: a => R(-a.n, a.d),
+      pow: (b, e) => {
+        if (e.d !== 1n) NR();
+        let exp = e.n;
+        if (exp > 4096n || exp < -4096n) NR();
+        if (exp >= 0n) return R(b.n ** exp, b.d ** exp);
+        const p = -exp; return R(b.d ** p, b.n ** p);
+      },
+      mod: (a, b) => { if (a.d !== 1n || b.d !== 1n) NR(); if (b.n === 0n) NR(); return R(a.n % b.n, 1n); },
+      fact: a => { if (a.d !== 1n || a.n < 0n || a.n > 170n) NR(); let r = 1n; for (let k = 2n; k <= a.n; k++) r *= k; return R(r, 1n); },
+      sqrt: a => {
+        if (a.n < 0n) NR();
+        const sn = isqrtBig(a.n), sd = isqrtBig(a.d);
+        if (sn * sn === a.n && sd * sd === a.d) return R(sn, sd);
+        NR();
+      },
+      pi: () => NR(), e: () => NR(), func: () => NR()
+    };
+
+    /* ===================== float backend ===================== */
+
+    function factorial(n) {
+      if (n < 0 || Math.floor(n) !== n) throw new Error("階乗は0以上の整数のみ");
+      if (n > 170) throw new Error("階乗が大きすぎます");
+      let r = 1; for (let k = 2; k <= n; k++) r *= k; return r;
+    }
+    function applyFunc(name, x) {
+      const toR = v => degMode ? v * Math.PI / 180 : v;
+      const fromR = v => degMode ? v * 180 / Math.PI : v;
+      switch (name) {
+        case "sin": return Math.sin(toR(x));
+        case "cos": return Math.cos(toR(x));
+        case "tan": return Math.tan(toR(x));
+        case "asin": return fromR(Math.asin(x));
+        case "acos": return fromR(Math.acos(x));
+        case "atan": return fromR(Math.atan(x));
+        case "ln": return Math.log(x);
+        case "log": return Math.log10(x);
+        case "sqrt": return Math.sqrt(x);
+        case "abs": return Math.abs(x);
+        case "exp": return Math.exp(x);
+        default: throw new Error("不明な関数: " + name);
+      }
+    }
+    const numOps = {
+      fromNum: t => t.v,
+      add: (a, b) => a + b, sub: (a, b) => a - b, mul: (a, b) => a * b, div: (a, b) => a / b, neg: a => -a,
+      pow: (b, e) => Math.pow(b, e), mod: (a, b) => a % b,
+      fact: factorial, sqrt: Math.sqrt,
+      pi: () => Math.PI, e: () => Math.E, func: applyFunc
+    };
+
+    /* ===================== Excel-formula backend ===================== */
+    // Builds an Excel formula string (parser values are sub-expression strings, fully parenthesised).
+    const excelOps = {
+      fromNum: t => t.raw,
+      add: (a, b) => `(${a}+${b})`,
+      sub: (a, b) => `(${a}-${b})`,
+      mul: (a, b) => `(${a}*${b})`,
+      div: (a, b) => `(${a}/${b})`,
+      neg: a => `(-${a})`,
+      pow: (b, e) => `(${b}^${e})`,
+      mod: (a, b) => `MOD(${a},${b})`,
+      fact: a => `FACT(${a})`,
+      sqrt: a => `SQRT(${a})`,
+      pi: () => "PI()",
+      e: () => "EXP(1)",
+      func: (name, x) => {
+        switch (name) {
+          case "sin": return degMode ? `SIN(RADIANS(${x}))` : `SIN(${x})`;
+          case "cos": return degMode ? `COS(RADIANS(${x}))` : `COS(${x})`;
+          case "tan": return degMode ? `TAN(RADIANS(${x}))` : `TAN(${x})`;
+          case "asin": return degMode ? `DEGREES(ASIN(${x}))` : `ASIN(${x})`;
+          case "acos": return degMode ? `DEGREES(ACOS(${x}))` : `ACOS(${x})`;
+          case "atan": return degMode ? `DEGREES(ATAN(${x}))` : `ATAN(${x})`;
+          case "ln": return `LN(${x})`;
+          case "log": return `LOG10(${x})`;
+          case "abs": return `ABS(${x})`;
+          case "exp": return `EXP(${x})`;
+          default: throw new Error("不明な関数: " + name);
+        }
+      }
+    };
+
+    /* ===================== tokenizer + generic parser ===================== */
+
+    function tokenize(s) {
+      const tokens = [];
+      let i = 0;
+      const isDigit = c => c >= "0" && c <= "9";
+      while (i < s.length) {
+        const c = s[i];
+        if (c === " ") { i++; continue; }
+        if (isDigit(c) || c === ".") {
+          let num = c; i++;
+          while (i < s.length && (isDigit(s[i]) || s[i] === ".")) { num += s[i]; i++; }
+          if ((num.match(/\./g) || []).length > 1) throw new Error("数値が不正です");
+          tokens.push({ t: "num", v: parseFloat(num), raw: num });
+          continue;
+        }
+        if (c === "×" || c === "*") { tokens.push({ t: "op", v: "×" }); i++; continue; }
+        if (c === "÷") { tokens.push({ t: "op", v: "÷" }); i++; continue; }
+        if (c === "/") { tokens.push({ t: "op", v: "/" }); i++; continue; }
+        if (c === "−" || c === "-") { tokens.push({ t: "op", v: "-" }); i++; continue; }
+        if ("+^!()%".includes(c)) { tokens.push({ t: "op", v: c }); i++; continue; }
+        if (c === "√") { tokens.push({ t: "sqrt" }); i++; continue; }
+        if (c === "π") { tokens.push({ t: "name", v: "pi" }); i++; continue; }
+        if (/[a-zA-Z]/.test(c)) {
+          let name = c; i++;
+          while (i < s.length && /[a-zA-Z]/.test(s[i])) { name += s[i]; i++; }
+          tokens.push({ t: "name", v: name.toLowerCase() });
+          continue;
+        }
+        throw new Error("不正な文字: " + c);
+      }
+      return tokens;
+    }
+
+    function parseWith(tokens, ops) {
+      let pos = 0;
+      const peek = () => tokens[pos];
+      const next = () => tokens[pos++];
+      const startsPrimary = tok => {
+        if (!tok) return false;
+        if (tok.t === "num" || tok.t === "sqrt" || tok.t === "name") return true;
+        if (tok.t === "op" && tok.v === "(") return true;
+        return false;
+      };
+      function expr() { return addsub(); }
+      function addsub() {
+        let l = muldiv(), t;
+        while ((t = peek()) && t.t === "op" && (t.v === "+" || t.v === "-")) {
+          next(); const r = muldiv(); l = t.v === "+" ? ops.add(l, r) : ops.sub(l, r);
+        }
+        return l;
+      }
+      function muldiv() {
+        let l = unary(), t;
+        while ((t = peek())) {
+          if (t.t === "op" && (t.v === "×" || t.v === "÷" || t.v === "%")) {
+            next(); const r = unary();
+            l = t.v === "×" ? ops.mul(l, r) : t.v === "%" ? ops.mod(l, r) : ops.div(l, r);
+          } else if (startsPrimary(t)) {
+            l = ops.mul(l, unary());
+          } else break;
+        }
+        return l;
+      }
+      function unary() {
+        const t = peek();
+        if (t && t.t === "op" && (t.v === "+" || t.v === "-")) {
+          next(); const v = unary(); return t.v === "-" ? ops.neg(v) : v;
+        }
+        return power();
+      }
+      function power() {
+        const b = fraclevel(), t = peek();
+        if (t && t.t === "op" && t.v === "^") { next(); return ops.pow(b, unary()); }
+        return b;
+      }
+      function fraclevel() {
+        let l = postfix(), t;
+        while ((t = peek()) && t.t === "op" && t.v === "/") { next(); l = ops.div(l, postfix()); }
+        return l;
+      }
+      function postfix() {
+        let v = primary(), t;
+        while ((t = peek()) && t.t === "op" && t.v === "!") { next(); v = ops.fact(v); }
+        return v;
+      }
+      function primary() {
+        const t = next();
+        if (!t) throw new Error("式が不完全です");
+        if (t.t === "num") return ops.fromNum(t);
+        if (t.t === "sqrt") return ops.sqrt(primary());
+        if (t.t === "op" && t.v === "(") {
+          const v = expr(); const c = next();
+          if (!c || c.v !== ")") throw new Error("括弧が閉じていません");
+          return v;
+        }
+        if (t.t === "name") {
+          if (t.v === "e") return ops.e();
+          if (t.v === "pi") return ops.pi();
+          const o = peek();
+          if (o && o.t === "op" && o.v === "(") {
+            next(); const a = expr(); const c = next();
+            if (!c || c.v !== ")") throw new Error("括弧が閉じていません");
+            return ops.func(t.v, a);
+          }
+          throw new Error("不明な記号: " + t.v);
+        }
+        throw new Error("式の解析に失敗しました");
+      }
+      const res = expr();
+      if (pos < tokens.length) throw new Error("式が正しくありません");
+      return res;
+    }
+
+    function evalFloat(s) {
+      const r = parseWith(tokenize(s), numOps);
+      if (typeof r !== "number" || Number.isNaN(r)) throw new Error("計算できません");
+      return r;
+    }
+    function compute(s) {
+      const dec = evalFloat(s);
+      let frac = null;
+      try {
+        const r = parseWith(tokenize(s), ratOps);
+        if (r.d !== 1n) frac = { n: r.n.toString(), d: r.d.toString() };
+      } catch (e) { frac = null; }
+      return { dec: fmtNum(dec), frac };
+    }
+    function fmtNum(n) {
+      if (!isFinite(n)) return n > 0 ? "∞" : "-∞";
+      let r = parseFloat(n.toPrecision(12));
+      if (Object.is(r, -0)) r = 0;
+      return String(r);
+    }
+
+    /* ===================== token-stream helpers ===================== */
+
+    const isChar = t => typeof t === "string";
+    const isFo = t => t && typeof t === "object" && t.m === "fo";
+    const isFs = t => t && typeof t === "object" && t.m === "fs";
+    const isFc = t => t && typeof t === "object" && t.m === "fc";
+    const isDigitDot = c => isChar(c) && (c >= "0" && c <= "9" || c === ".");
+    const cloneToks = arr => arr.map(t => (t && t.m) ? { m: t.m } : t);
+
+    function fracMap(arr) {
+      const map = {}, st = [];
+      for (let i = 0; i < arr.length; i++) {
+        const t = arr[i];
+        if (isFo(t)) st.push({ fo: i, fs: -1, fc: -1 });
+        else if (isFs(t)) { if (st.length) st[st.length - 1].fs = i; }
+        else if (isFc(t)) { const f = st.pop(); if (f) { f.fc = i; map[f.fo] = f; } }
+      }
+      return map;
+    }
+
+    // which fraction box the caret sits in
+    function contextAt(c) {
+      const fm = fracMap(toks), st = [];
+      for (let idx = 0; idx <= toks.length; idx++) {
+        if (idx === c) {
+          if (!st.length) return { frac: null };
+          const top = st[st.length - 1];
+          return { frac: top, side: c <= top.fs ? "num" : "den" };
+        }
+        const t = toks[idx];
+        if (isFo(t)) st.push(fm[idx]);
+        else if (isFc(t)) st.pop();
+      }
+      return { frac: null };
+    }
+
+    // token stream -> evaluable / readable string. simplify=true drops parens around simple operands.
+    function rangeSimple(arr, from, to) {
+      if (to <= from) return false;
+      for (let i = from; i < to; i++) if (!isDigitDot(arr[i])) return false;
+      return true;
+    }
+    function strFromToks(arr, simplify) {
+      const fm = fracMap(arr), wrap = [];
+      let s = "";
+      for (let i = 0; i < arr.length; i++) {
+        const t = arr[i];
+        if (isFo(t)) {
+          const f = fm[i];
+          const wn = !simplify || !rangeSimple(arr, i + 1, f.fs);
+          const wd = !simplify || !rangeSimple(arr, f.fs + 1, f.fc);
+          wrap.push({ wn, wd });
+          s += wn ? "(" : "";
+        } else if (isFs(t)) {
+          const w = wrap[wrap.length - 1];
+          s += (w.wn ? ")" : "") + "/" + (w.wd ? "(" : "");
+        } else if (isFc(t)) {
+          const w = wrap.pop();
+          s += w.wd ? ")" : "";
+        } else s += t;
+      }
+      return s;
+    }
+    const evalStrOf = arr => strFromToks(arr, false);
+    const textOf = arr => strFromToks(arr, true);
+    function excelFormulaOf(arr) {
+      try { return "=" + parseWith(tokenize(evalStrOf(arr)), excelOps); }
+      catch (e) { return null; }
+    }
+
+    function fracHTML(n, d) {
+      let sign = "";
+      if (n[0] === "-") { sign = "−"; n = n.slice(1); }
+      return '<span class="frac">' +
+        (sign ? '<span class="fsign">' + sign + "</span>" : "") +
+        '<span class="fcol"><span class="fnum">' + n + '</span>' +
+        '<span class="fbar"></span><span class="fden">' + d + "</span></span></span>";
+    }
+    const shownText = (res, showFrac) => (res.frac && showFrac) ? res.frac.n + "/" + res.frac.d : res.dec;
+
+    /* ===================== rendering ===================== */
+
+    function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
+    function caretSpan() { return el("span", "caret"); }
+    function fbox() { return el("span", "fbox"); }
+    function makeCell(idx, ch, editable) {
+      const s = el("span", "cell");
+      s.textContent = ch;
+      if (editable) s.addEventListener("mousedown", ev => {
+        ev.preventDefault();
+        const r = s.getBoundingClientRect();
+        caret = ev.clientX < r.left + r.width / 2 ? idx : idx + 1;
+        render();
+      });
+      return s;
+    }
+
+    // render a token array; caretIdx = null for read-only (history)
+    function renderInto(container, arr, caretIdx) {
+      container.innerHTML = "";
+      const editable = caretIdx !== null;
+      let placed = !editable;
+      let cur = container;
+      const frames = [];
+      const closeFrame = fr => {
+        if (!fr.num.querySelector(".cell")) fr.num.appendChild(fbox());
+        if (!fr.den.querySelector(".cell")) fr.den.appendChild(fbox());
+      };
+      for (let idx = 0; idx <= arr.length; idx++) {
+        if (caretIdx === idx && !placed) { cur.appendChild(caretSpan()); placed = true; }
+        if (idx >= arr.length) break;
+        const t = arr[idx];
+        if (isFo(t)) {
+          const frac = el("span", "disp-frac"), col = el("span", "disp-col");
+          const num = el("span", "disp-num"), bar = el("span", "disp-bar"), den = el("span", "disp-den");
+          col.appendChild(num); col.appendChild(bar); col.appendChild(den);
+          frac.appendChild(col); cur.appendChild(frac);
+          frames.push({ parent: cur, num, den, bar });
+          cur = num;
+        } else if (isFs(t)) {
+          const fr = frames[frames.length - 1];
+          fr.fsIdx = idx;
+          if (editable) fr.bar.addEventListener("mousedown", ev => { ev.preventDefault(); caret = idx; render(); });
+          cur = fr.den;
+        } else if (isFc(t)) {
+          const fr = frames.pop();
+          closeFrame(fr);
+          cur = fr.parent;
+        } else {
+          cur.appendChild(makeCell(idx, t, editable));
+        }
+      }
+      while (frames.length) { const fr = frames.pop(); closeFrame(fr); }
+    }
+
+    function renderExpr() {
+      if (toks.length === 0) {
+        exprEl.innerHTML = "";
+        exprEl.appendChild(caretSpan());
+        const ph = el("span", "ph"); ph.textContent = "0"; exprEl.appendChild(ph);
+        return;
+      }
+      renderInto(exprEl, toks, caret);
+      const cr = exprEl.querySelector(".caret");
+      if (cr) {
+        const cl = cr.offsetLeft, vw = exprEl.clientWidth;
+        if (cl < exprEl.scrollLeft + 12) exprEl.scrollLeft = Math.max(0, cl - 12);
+        else if (cl > exprEl.scrollLeft + vw - 12) exprEl.scrollLeft = cl - vw + 12;
+      }
+    }
+
+    function renderPreview() {
+      if (toks.length === 0) { previewEl.textContent = ""; previewEl.classList.remove("error"); return; }
+      try {
+        const res = compute(evalStrOf(toks));
+        if (res.frac && preferFraction) previewEl.innerHTML = "= " + fracHTML(res.frac.n, res.frac.d);
+        else previewEl.textContent = "= " + res.dec;
+        previewEl.classList.remove("error");
+      } catch (e) {
+        previewEl.textContent = "…";
+        previewEl.classList.remove("error");
+      }
+    }
+
+    function render() { renderExpr(); renderPreview(); }
+
+    /* ===================== editing ===================== */
+
+    function insert(text) {
+      const arr = text.split("");
+      toks.splice(caret, 0, ...arr);
+      caret += arr.length;
+      render();
+    }
+    function insertToks(arr) {
+      const c = cloneToks(arr);
+      toks.splice(caret, 0, ...c);
+      caret += c.length;
+      render();
+    }
+    // Casio fraction key: the operand just before the caret becomes the numerator; cursor moves to
+    // the denominator. With nothing before it, an empty template appears with the cursor in the numerator.
+    function insertFraction() {
+      let start = caret;
+      const prev = toks[caret - 1];
+      if (isChar(prev) && (isDigitDot(prev) || prev === "π")) {
+        let j = caret - 1;
+        while (j >= 0 && isChar(toks[j]) && (isDigitDot(toks[j]) || toks[j] === "π")) j--;
+        start = j + 1;
+      } else if (prev === ")") {
+        let depth = 0, j = caret - 1;
+        for (; j >= 0; j--) { if (toks[j] === ")") depth++; else if (toks[j] === "(") { depth--; if (depth === 0) break; } }
+        if (j >= 0) start = j;
+      } else if (isFc(prev)) {
+        const fm = fracMap(toks);
+        for (const k in fm) if (fm[k].fc === caret - 1) { start = fm[k].fo; break; }
+      }
+      // absorb a function name / root that belongs to this operand (e.g. sin(30), √2)
+      while (start > 0) {
+        const p = toks[start - 1];
+        if (p === "√" || (isChar(p) && /[a-zA-Z]/.test(p))) start--; else break;
+      }
+      const numer = toks.slice(start, caret);
+      const tpl = [{ m: "fo" }, ...numer, { m: "fs" }, { m: "fc" }];
+      toks.splice(start, caret - start, ...tpl);
+      caret = numer.length ? start + numer.length + 2 : start + 1;
+      render();
+    }
+
+    function backspace() {
+      if (caret <= 0) return;
+      const t = toks[caret - 1];
+      if (isChar(t)) { toks.splice(caret - 1, 1); caret--; render(); return; }
+      if (isFc(t) || isFs(t)) { caret--; render(); return; }   // step into the box rather than break it
+      if (isFo(t)) {
+        const f = fracMap(toks)[caret - 1];
+        if (f && f.fs === f.fo + 1 && f.fc === f.fs + 1) { toks.splice(f.fo, 3); caret = f.fo; render(); return; }
+        caret--; render();
+      }
+    }
+    function deleteForward() {
+      if (caret >= toks.length) return;
+      const t = toks[caret];
+      if (isChar(t)) { toks.splice(caret, 1); render(); return; }
+      if (isFo(t)) {
+        const f = fracMap(toks)[caret];
+        if (f && f.fs === f.fo + 1 && f.fc === f.fs + 1) { toks.splice(f.fo, 3); render(); return; }
+      }
+      caret++; render();
+    }
+    function clearAll() { toks = []; caret = 0; render(); }
+    function moveCaret(d) { caret = Math.max(0, Math.min(toks.length, caret + d)); render(); }
+    function setCaret(p) { caret = Math.max(0, Math.min(toks.length, p)); render(); }
+    function moveVert(dir) { // dir<0 = up (numerator), dir>0 = down (denominator)
+      const ctx = contextAt(caret);
+      if (!ctx.frac) return;
+      if (dir > 0 && ctx.side === "num") { caret = ctx.frac.fc; render(); }
+      else if (dir < 0 && ctx.side === "den") { caret = ctx.frac.fs; render(); }
+    }
+
+    function resultToks(res) {
+      const arr = [];
+      if (res.frac) {
+        let n = res.frac.n;
+        if (n[0] === "-") { arr.push("−"); n = n.slice(1); }
+        arr.push({ m: "fo" });
+        for (const ch of n) arr.push(ch);
+        arr.push({ m: "fs" });
+        for (const ch of res.frac.d) arr.push(ch);
+        arr.push({ m: "fc" });
+      } else {
+        for (const ch of res.dec) arr.push(ch === "-" ? "−" : ch);
+      }
+      return arr;
+    }
+
+    function equals() {
+      if (toks.length === 0) return;
+      let res;
+      try { res = compute(evalStrOf(toks)); }
+      catch (e) {
+        previewEl.textContent = "エラー: " + e.message;
+        previewEl.classList.add("error");
+        return;
+      }
+      history.unshift({ toks: cloneToks(toks), text: textOf(toks), excel: excelFormulaOf(toks), dec: res.dec, frac: res.frac, showFrac: preferFraction });
+      renderHistory();
+      toks = resultToks(res);
+      caret = toks.length;
+      render();
+    }
+
+    function renderHistory() {
+      histList.querySelectorAll(".hist-item").forEach(n => n.remove());
+      histEmpty.style.display = history.length ? "none" : "block";
+
+      history.forEach((item, idx) => {
+        const res = { dec: item.dec, frac: item.frac };
+        const wrap = el("div", "hist-item");
+        const line = el("div", "line");
+
+        const ex = el("span", "hexpr");
+        renderInto(ex, item.toks, null);
+        const eq = el("span", "hexpr"); eq.textContent = "＝";
+
+        const ansBtn = el("button", "hans-btn");
+        if (item.frac && item.showFrac) ansBtn.innerHTML = fracHTML(item.frac.n, item.frac.d);
+        else ansBtn.textContent = item.dec;
+        ansBtn.title = "この答えを式に入れる";
+        ansBtn.addEventListener("click", () => { caret = toks.length; insertToks(resultToks(res)); });
+
+        line.appendChild(ex); line.appendChild(eq); line.appendChild(ansBtn);
+
+        const actions = el("div", "hist-actions");
+        const copyBtn = el("button", "copy");
+        copyBtn.textContent = "コピー";
+        copyBtn.addEventListener("click", () => copyText(item.text + " ＝ " + shownText(res, item.showFrac), copyBtn));
+        actions.appendChild(copyBtn);
+
+        const xlBtn = el("button", "xl");
+        xlBtn.textContent = "Excel数式";
+        xlBtn.title = "Excelにそのまま貼り付けられる数式をコピー";
+        xlBtn.addEventListener("click", () => {
+          const f = item.excel;
+          if (f) copyText(f, xlBtn); else showToast("数式化できません");
+        });
+        actions.appendChild(xlBtn);
+
+        if (item.frac) {
+          const sdBtn = el("button", "sd-btn");
+          sdBtn.textContent = "S⇔D"; sdBtn.title = "分数⇔小数 切替";
+          sdBtn.addEventListener("click", () => { item.showFrac = !item.showFrac; renderHistory(); });
+          actions.appendChild(sdBtn);
+        }
+
+        const reuseBtn = el("button", "reuse");
+        reuseBtn.textContent = "式を再利用";
+        reuseBtn.addEventListener("click", () => { toks = cloneToks(item.toks); caret = toks.length; render(); });
+        actions.appendChild(reuseBtn);
+
+        const delBtn = el("button", "reuse");
+        delBtn.textContent = "削除";
+        delBtn.addEventListener("click", () => { history.splice(idx, 1); renderHistory(); });
+        actions.appendChild(delBtn);
+
+        wrap.appendChild(line); wrap.appendChild(actions);
+        histList.appendChild(wrap);
+      });
+    }
+
+    function copyText(text, btn) {
+      const done = () => {
+        if (btn) {
+          const orig = btn.textContent;
+          btn.textContent = "コピー済 ✓"; btn.classList.add("done");
+          setTimeout(() => { btn.textContent = orig; btn.classList.remove("done"); }, 1300);
+        }
+        showToast("コピーしました");
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+      } else fallbackCopy(text, done);
+    }
+    function fallbackCopy(text, done) {
+      const ta = document.createElement("textarea");
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); done(); } catch (e) { showToast("コピーに失敗しました"); }
+      document.body.removeChild(ta);
+    }
+
+    let toastTimer;
+    function showToast(msg) {
+      toastEl.textContent = msg; toastEl.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1400);
+    }
+    function toggleSD() { preferFraction = !preferFraction; showToast(preferFraction ? "分数表示" : "小数表示"); render(); }
+
+    /* ===================== events ===================== */
+
+    document.querySelectorAll("[data-ins]").forEach(btn => {
+      btn.addEventListener("click", () => insert(btn.getAttribute("data-ins")));
+    });
+    document.querySelectorAll("[data-action]").forEach(btn => {
+      const a = btn.getAttribute("data-action");
+      btn.addEventListener("click", () => {
+        if (a === "ac") clearAll();
+        else if (a === "back") backspace();
+        else if (a === "equals") equals();
+        else if (a === "sd") toggleSD();
+        else if (a === "frac") insertFraction();
+        else if (a === "left") moveCaret(-1);
+        else if (a === "right") moveCaret(1);
+        else if (a === "up") moveVert(-1);
+        else if (a === "down") moveVert(1);
+      });
+    });
+
+    document.getElementById("modeToggle").addEventListener("click", ev => {
+      const b = ev.target.closest("button[data-mode]");
+      if (!b) return;
+      degMode = b.getAttribute("data-mode") === "deg";
+      document.querySelectorAll("#modeToggle button").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      render();
+    });
+
+    document.getElementById("clearHist").addEventListener("click", () => {
+      if (!history.length) return;
+      history = []; renderHistory();
+    });
+
+    const keyMap = { "*": "×", "-": "−", "+": "+", ".": ".", "(": "(", ")": ")", "^": "^", "!": "!", "%": "%" };
+    document.addEventListener("keydown", e => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key;
+      if (k === "ArrowLeft") { moveCaret(-1); e.preventDefault(); return; }
+      if (k === "ArrowRight") { moveCaret(1); e.preventDefault(); return; }
+      if (k === "ArrowUp") { moveVert(-1); e.preventDefault(); return; }
+      if (k === "ArrowDown") { moveVert(1); e.preventDefault(); return; }
+      if (k === "Home") { setCaret(0); e.preventDefault(); return; }
+      if (k === "End") { setCaret(toks.length); e.preventDefault(); return; }
+      if (k === "Delete") { deleteForward(); e.preventDefault(); return; }
+      if (k >= "0" && k <= "9") { insert(k); e.preventDefault(); return; }
+      if (k === "/") { insertFraction(); e.preventDefault(); return; }
+      if (k === "Enter" || k === "=") { equals(); e.preventDefault(); return; }
+      if (k === "Backspace") { backspace(); e.preventDefault(); return; }
+      if (k === "Escape") { clearAll(); e.preventDefault(); return; }
+      if (k === "s" || k === "S") { toggleSD(); e.preventDefault(); return; }
+      if (keyMap.hasOwnProperty(k)) { insert(keyMap[k]); e.preventDefault(); return; }
+    });
+
+    exprEl.addEventListener("mousedown", ev => {
+      if (ev.target === exprEl) { ev.preventDefault(); setCaret(toks.length); }
+    });
+
+    render();
+    renderHistory();
+  })();
+  </script>
+</body>
+</html>
