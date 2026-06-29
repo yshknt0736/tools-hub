@@ -265,6 +265,47 @@
       transition: opacity .2s, transform .2s; z-index: 50;
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ---- app mode switch (calc / formula) ---- */
+    .appmode {
+      display: flex; width: max-content; margin: 0 auto 14px;
+      border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+      background: var(--panel); box-shadow: 0 8px 24px rgba(24,33,29,.08);
+    }
+    .appmode button { padding: 9px 22px; background: var(--panel); color: var(--muted); font-weight: 760; font-size: 14px; }
+    .appmode button.active { background: var(--ink); color: #fff; }
+
+    /* ---- formula (PowerPoint) mode ---- */
+    .formula { padding: 16px; }
+    .fm-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .fm-input {
+      width: 100%; min-height: 74px; resize: vertical; border: 1px solid var(--line); border-radius: 10px;
+      padding: 12px 14px; font-size: 19px; line-height: 1.5; color: var(--ink); background: #fcfdfc;
+      font-family: "Cambria Math", "Segoe UI", system-ui, serif; letter-spacing: .2px;
+    }
+    .fm-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .fm-actions { display: flex; gap: 8px; margin: 10px 0 14px; flex-wrap: wrap; }
+    .fm-actions button { padding: 9px 16px; border-radius: 9px; font-weight: 720; font-size: 14px; border: 1px solid var(--line); background: #fff; color: var(--ink); }
+    .fm-actions .fm-copy { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .fm-actions .fm-copy:hover { background: #0c6764; }
+    .fm-actions .fm-copy.done { background: #1d7044; border-color: #1d7044; }
+    .fm-actions .fm-clear { color: var(--accent-2); border-color: #eccfc6; }
+    .fm-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .fm-tabs button { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); font-weight: 720; font-size: 13px; }
+    .fm-tabs button.active { background: var(--soft); color: var(--accent); border-color: #cfe6dd; }
+    .fm-pal { display: grid; grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: 7px; }
+    .fm-key {
+      min-height: 44px; border-radius: 9px; border: 1px solid var(--line); background: var(--key-num);
+      color: var(--ink); font-size: 18px; font-weight: 600; transition: background .12s;
+      font-family: "Cambria Math", "Segoe UI", system-ui, serif;
+      display: flex; align-items: center; justify-content: center; padding: 2px; text-align: center;
+    }
+    .fm-key:hover { background: var(--soft); }
+    .fm-key:active { transform: translateY(1px); }
+    .fm-key.struct { background: #eaf1ff; color: #3a55a8; border-color: #d4e0fb; font-size: 13px; grid-column: span 2; }
+    .fm-key.struct:hover { background: #dde8ff; }
+    .fm-help { color: var(--muted); font-size: 12.5px; line-height: 1.6; margin: 14px 2px 0; }
+    .fm-help b { color: var(--ink); }
   </style>
 </head>
 <body>
@@ -274,7 +315,12 @@
       <p class="subtitle">カシオ風の自然表示。分数キーで縦組みの分数を入力し、<b>↑↓キー（または画面の▲▼）で分子・分母を移動</b>、←→で1文字移動、クリックでカーソル配置。約分された分数で答えが出て S⇔D で小数に切替。結果は右側に残り行ごとにコピー可。すべて端末内で処理。</p>
     </header>
 
-    <div class="layout">
+    <div class="appmode" id="appMode">
+      <button data-app="calc" class="active">計算</button>
+      <button data-app="formula">数式 (PowerPoint)</button>
+    </div>
+
+    <div class="layout" id="calcView">
       <!-- calculator -->
       <section class="panel calc">
         <div class="display">
@@ -360,6 +406,36 @@
         <div class="hist-list" id="histList">
           <div class="hist-empty" id="histEmpty">まだ計算結果はありません。<br>「=」または Enter で計算するとここに残ります。</div>
         </div>
+      </section>
+    </div>
+
+    <div id="formulaView" hidden>
+      <section class="panel formula">
+        <div class="fm-top">
+          <div class="mode-toggle" id="fmtToggle">
+            <button data-fmt="uni" class="active">UnicodeMath</button>
+            <button data-fmt="tex">LaTeX</button>
+          </div>
+          <span class="hint">PowerPointで <b>Alt+=</b> → 貼り付けで数式になります</span>
+        </div>
+
+        <textarea id="fmInput" class="fm-input" rows="2" spellcheck="false" placeholder="ここに数式を組み立て…（下のボタン／キーボードで入力）"></textarea>
+
+        <div class="fm-actions">
+          <button class="fm-copy" id="fmCopy">数式をコピー</button>
+          <button class="fm-clear" id="fmClear">クリア</button>
+        </div>
+
+        <div class="fm-tabs" id="fmTabs">
+          <button data-tab="greek" class="active">ギリシャ文字</button>
+          <button data-tab="sym">記号・関係</button>
+          <button data-tab="struct">構造</button>
+          <button data-tab="latin">英字・数字</button>
+        </div>
+
+        <div class="fm-pal" id="fmPal"></div>
+
+        <p class="fm-help">使い方: PowerPointで「挿入 → 数式」または <b>Alt+=</b> を押し、上で「数式をコピー」した内容を貼り付けると自動で数式に変換されます。<b>LaTeX</b>形式の場合は、数式ツールの「変換」入力を <b>{}LaTeX</b> にしてから貼り付けてください。構造（分数・上下付き・√・∑・∫ 等）はボタンを押すとカーソルが入力位置に入ります。</p>
       </section>
     </div>
   </div>
@@ -1030,6 +1106,7 @@
     const keyMap = { "*": "×", "-": "−", "+": "+", ".": ".", "(": "(", ")": ")", "^": "^", "!": "!", "%": "%" };
     document.addEventListener("keydown", e => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT")) return;  // let formula field type freely
       const k = e.key;
       if (k === "ArrowLeft") { moveCaret(-1); e.preventDefault(); return; }
       if (k === "ArrowRight") { moveCaret(1); e.preventDefault(); return; }
@@ -1050,6 +1127,128 @@
     exprEl.addEventListener("mousedown", ev => {
       if (ev.target === exprEl) { ev.preventDefault(); setCaret(toks.length); }
     });
+
+    /* ===================== formula (PowerPoint) mode ===================== */
+    const appMode = document.getElementById("appMode");
+    const calcView = document.getElementById("calcView");
+    const formulaView = document.getElementById("formulaView");
+    const fmInput = document.getElementById("fmInput");
+    const fmPal = document.getElementById("fmPal");
+    const fmTabs = document.getElementById("fmTabs");
+    const CARET = "";              // caret marker inside structure snippets
+    let fmt = "uni";                     // "uni" = UnicodeMath, "tex" = LaTeX
+    let curTab = "greek";
+
+    const G = (l, tex) => ({ l, tex });  // symbol: label + optional LaTeX form
+    const S = (l, uni, tex) => ({ l, uni, tex, cls: "struct" });  // structure template
+
+    const greek = [
+      G("α","\\alpha"),G("β","\\beta"),G("γ","\\gamma"),G("δ","\\delta"),G("ε","\\epsilon"),
+      G("ζ","\\zeta"),G("η","\\eta"),G("θ","\\theta"),G("ι","\\iota"),G("κ","\\kappa"),
+      G("λ","\\lambda"),G("μ","\\mu"),G("ν","\\nu"),G("ξ","\\xi"),G("π","\\pi"),
+      G("ρ","\\rho"),G("σ","\\sigma"),G("τ","\\tau"),G("υ","\\upsilon"),G("φ","\\phi"),
+      G("χ","\\chi"),G("ψ","\\psi"),G("ω","\\omega"),
+      G("ϵ","\\varepsilon"),G("ϑ","\\vartheta"),G("ϕ","\\varphi"),G("ϱ","\\varrho"),G("ϖ","\\varpi"),
+      G("Γ","\\Gamma"),G("Δ","\\Delta"),G("Θ","\\Theta"),G("Λ","\\Lambda"),G("Ξ","\\Xi"),
+      G("Π","\\Pi"),G("Σ","\\Sigma"),G("Υ","\\Upsilon"),G("Φ","\\Phi"),G("Ψ","\\Psi"),G("Ω","\\Omega")
+    ];
+    const sym = [
+      G("×","\\times"),G("÷","\\div"),G("±","\\pm"),G("∓","\\mp"),G("⋅","\\cdot"),G("∘","\\circ"),G("∗","\\ast"),
+      G("=","="),G("≠","\\neq"),G("≈","\\approx"),G("≡","\\equiv"),G("≅","\\cong"),G("∼","\\sim"),
+      G("≤","\\leq"),G("≥","\\geq"),G("≪","\\ll"),G("≫","\\gg"),G("∝","\\propto"),
+      G("→","\\to"),G("←","\\leftarrow"),G("↔","\\leftrightarrow"),G("⇒","\\Rightarrow"),G("⇔","\\Leftrightarrow"),G("↦","\\mapsto"),
+      G("∞","\\infty"),G("∂","\\partial"),G("∇","\\nabla"),G("′","'"),G("″","''"),G("…","\\dots"),G("⋯","\\cdots"),
+      G("∈","\\in"),G("∉","\\notin"),G("⊂","\\subset"),G("⊆","\\subseteq"),G("⊃","\\supset"),G("∪","\\cup"),G("∩","\\cap"),G("∅","\\emptyset"),
+      G("∀","\\forall"),G("∃","\\exists"),G("¬","\\neg"),G("∧","\\wedge"),G("∨","\\vee"),G("∴","\\therefore"),G("∵","\\because"),
+      G("∠","\\angle"),G("⊥","\\perp"),G("∥","\\parallel"),G("°","^\\circ"),
+      G("ℏ","\\hbar"),G("ℝ","\\mathbb{R}"),G("ℂ","\\mathbb{C}"),G("ℤ","\\mathbb{Z}"),G("ℕ","\\mathbb{N}"),G("ℚ","\\mathbb{Q}")
+    ];
+    const struct = [
+      S("a/b 分数", "(" + CARET + ")/()", "\\frac{" + CARET + "}{}"),
+      S("xⁿ 上付き", "^(" + CARET + ")", "^{" + CARET + "}"),
+      S("xₙ 下付き", "_(" + CARET + ")", "_{" + CARET + "}"),
+      S("√ 平方根", "√(" + CARET + ")", "\\sqrt{" + CARET + "}"),
+      S("ⁿ√ 累乗根", "√(" + CARET + "&)", "\\sqrt[" + CARET + "]{}"),
+      S("∫ 積分", "∫_(" + CARET + ")^() ", "\\int_{" + CARET + "}^{}"),
+      S("∮ 周回積分", "∮_(" + CARET + ") ", "\\oint_{" + CARET + "}"),
+      S("∑ 総和", "∑_(" + CARET + ")^() ", "\\sum_{" + CARET + "}^{}"),
+      S("∏ 総乗", "∏_(" + CARET + ")^() ", "\\prod_{" + CARET + "}^{}"),
+      S("lim 極限", "lim_(" + CARET + "→) ", "\\lim_{" + CARET + " \\to }"),
+      S("( )", "(" + CARET + ")", "(" + CARET + ")"),
+      S("[ ]", "[" + CARET + "]", "[" + CARET + "]"),
+      S("{ }", "{" + CARET + "}", "\\{" + CARET + "\\}"),
+      S("|a|", "|" + CARET + "|", "|" + CARET + "|"),
+      S("⟨ ⟩", "⟨" + CARET + "⟩", "\\langle " + CARET + " \\rangle"),
+      S("â ハット", CARET + "̂", "\\hat{" + CARET + "}"),
+      S("ā バー", CARET + "̄", "\\bar{" + CARET + "}"),
+      S("a⃗ ベクトル", CARET + "⃗", "\\vec{" + CARET + "}"),
+      S("ȧ ドット", CARET + "̇", "\\dot{" + CARET + "}")
+    ];
+    const latin = [];
+    "abcdefghijklmnopqrstuvwxyz".split("").forEach(c => latin.push(G(c)));
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach(c => latin.push(G(c)));
+    "0123456789".split("").forEach(c => latin.push(G(c)));
+    ["+", "−", "=", "(", ")", ",", ".", "⋅"].forEach(c => latin.push(G(c)));
+    const PALS = { greek, sym, struct, latin };
+
+    function fmInsert(s) {
+      const start = fmInput.selectionStart, end = fmInput.selectionEnd;
+      const m = s.indexOf(CARET);
+      const clean = s.split(CARET).join("");
+      fmInput.setRangeText(clean, start, end, "end");
+      if (m >= 0) { const p = start + m; fmInput.setSelectionRange(p, p); }
+      fmInput.focus();
+    }
+    function chooseStr(it) {
+      if (fmt === "tex") {
+        let t = it.tex != null ? it.tex : it.l;
+        if (/^\\[a-zA-Z]+$/.test(t)) t += " ";   // bare LaTeX command needs a trailing space
+        return t;
+      }
+      return it.uni != null ? it.uni : it.l;
+    }
+    function renderPal() {
+      fmPal.innerHTML = "";
+      PALS[curTab].forEach(it => {
+        const b = document.createElement("button");
+        b.className = "fm-key" + (it.cls ? " " + it.cls : "");
+        b.textContent = it.l;
+        b.addEventListener("click", () => fmInsert(chooseStr(it)));
+        fmPal.appendChild(b);
+      });
+    }
+
+    fmTabs.addEventListener("click", e => {
+      const b = e.target.closest("button[data-tab]"); if (!b) return;
+      curTab = b.getAttribute("data-tab");
+      [...fmTabs.children].forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      renderPal();
+    });
+    document.getElementById("fmtToggle").addEventListener("click", e => {
+      const b = e.target.closest("button[data-fmt]"); if (!b) return;
+      fmt = b.getAttribute("data-fmt");
+      document.querySelectorAll("#fmtToggle button").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      showToast(fmt === "tex" ? "LaTeX形式で挿入します" : "UnicodeMath形式で挿入します");
+    });
+    document.getElementById("fmCopy").addEventListener("click", () => {
+      if (!fmInput.value.trim()) { showToast("数式が空です"); return; }
+      copyText(fmInput.value, document.getElementById("fmCopy"));
+    });
+    document.getElementById("fmClear").addEventListener("click", () => { fmInput.value = ""; fmInput.focus(); });
+
+    appMode.addEventListener("click", e => {
+      const b = e.target.closest("button[data-app]"); if (!b) return;
+      [...appMode.children].forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      const isFormula = b.getAttribute("data-app") === "formula";
+      formulaView.hidden = !isFormula;
+      calcView.hidden = isFormula;
+      if (isFormula) fmInput.focus();
+    });
+
+    renderPal();
 
     render();
     renderHistory();
