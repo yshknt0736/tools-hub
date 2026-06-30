@@ -306,6 +306,40 @@
     .fm-key.struct:hover { background: #dde8ff; }
     .fm-help { color: var(--muted); font-size: 12.5px; line-height: 1.6; margin: 14px 2px 0; }
     .fm-help b { color: var(--ink); }
+
+    /* natural-display formula editor */
+    .fm-display {
+      display: block; white-space: nowrap; background: #1c2b26; color: #eef3ef;
+      border-radius: 10px; padding: 16px; min-height: 64px; line-height: 1.85;
+      font-size: 24px; font-family: "Cambria Math", "Segoe UI", system-ui, serif;
+      overflow-x: auto; cursor: text; user-select: none; scrollbar-width: none;
+    }
+    .fm-display::-webkit-scrollbar { display: none; }
+    .fm-display .ph { color: rgba(238,243,239,.4); font-size: 16px; }
+    .fm-display .cell { white-space: pre; }
+    .fm-display .disp-frac { vertical-align: middle; }
+    .fm-display .caret { border-left-color: #8fe3c9; }
+    .fm-sup { display: inline-block; vertical-align: super; font-size: .66em; }
+    .fm-sub { display: inline-block; vertical-align: sub; font-size: .66em; }
+    .fm-sqrt { display: inline-flex; align-items: flex-start; vertical-align: middle; }
+    .fm-sqrt-rad { font-size: 1.05em; }
+    .fm-sqrt-body { border-top: 1.5px solid currentColor; padding: 2px 3px 0; }
+    .fm-root-idx { display: inline-block; font-size: .6em; align-self: flex-start; margin-right: -3px; }
+    .fm-acc { display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; }
+    .fm-acc-mark { font-size: .7em; line-height: .5; height: .5em; }
+    .fm-acc-body { display: inline-flex; }
+    .fm-bigop { display: inline-flex; align-items: center; vertical-align: middle; }
+    .fm-bigop-op { font-size: 1.25em; }
+    .fm-bigop-lim { display: inline-flex; flex-direction: column; align-items: center; font-size: .58em; margin-left: 1px; }
+    .fm-bigop-sup, .fm-bigop-sub { display: inline-flex; justify-content: center; min-height: 1em; }
+    .fm-export { margin: 9px 0 0; display: flex; align-items: center; gap: 8px; }
+    .fm-export-label { font-size: 11px; color: var(--muted); font-weight: 700; white-space: nowrap; }
+    .fm-export code {
+      flex: 1; min-width: 0; background: #f2f4f2; border: 1px solid var(--line); border-radius: 7px;
+      padding: 7px 10px; font-size: 13px; color: var(--ink); word-break: break-all;
+      font-family: Consolas, "Courier New", monospace;
+    }
+    .fm-actions .fm-nav { font-weight: 700; min-width: 42px; padding: 9px 12px; }
   </style>
 </head>
 <body>
@@ -419,10 +453,16 @@
           <span class="hint">PowerPointで <b>Alt+=</b> → 貼り付けで数式になります</span>
         </div>
 
-        <textarea id="fmInput" class="fm-input" rows="2" spellcheck="false" placeholder="ここに数式を組み立て…（下のボタン／キーボードで入力）"></textarea>
+        <div class="fm-display" id="fmDisplay"></div>
+        <div class="fm-export"><span class="fm-export-label" id="fmFmtLabel">UnicodeMath</span><code id="fmExport"></code></div>
 
         <div class="fm-actions">
           <button class="fm-copy" id="fmCopy">数式をコピー</button>
+          <button class="fm-nav" data-fma="left" title="左へ (←)">◀</button>
+          <button class="fm-nav" data-fma="right" title="右へ (→)">▶</button>
+          <button class="fm-nav" data-fma="up" title="分子へ (↑)">▲</button>
+          <button class="fm-nav" data-fma="down" title="分母へ (↓)">▼</button>
+          <button class="fm-clear" data-fma="back" title="削除 (Backspace)">⌫</button>
           <button class="fm-clear" id="fmClear">クリア</button>
         </div>
 
@@ -435,7 +475,7 @@
 
         <div class="fm-pal" id="fmPal"></div>
 
-        <p class="fm-help">使い方: PowerPointで「挿入 → 数式」または <b>Alt+=</b> を押し、上で「数式をコピー」した内容を貼り付けると自動で数式に変換されます。<b>LaTeX</b>形式の場合は、数式ツールの「変換」入力を <b>{}LaTeX</b> にしてから貼り付けてください。構造（分数・上下付き・√・∑・∫ 等）はボタンを押すとカーソルが入力位置に入ります。</p>
+        <p class="fm-help">数式は電卓と同じ自然表示（分数は縦組み等）で組み立て、コピーは上に表示中の <b>UnicodeMath / LaTeX</b> の線形形式になります。<b>↑↓</b>で分子分母、<b>←→</b>でカーソル移動、クリックで位置指定。キーボードで英数字・記号入力、<b>/ ^ _</b> で分数・上付き・下付きを作成。<br>貼り付け方: PowerPointで「挿入 → 数式」または <b>Alt+=</b> を押し、「数式をコピー」した内容を貼り付け（LaTeX形式は数式ツールの入力を <b>LaTeX</b> に設定）。</p>
       </section>
     </div>
   </div>
@@ -1106,7 +1146,7 @@
     const keyMap = { "*": "×", "-": "−", "+": "+", ".": ".", "(": "(", ")": ")", "^": "^", "!": "!", "%": "%" };
     document.addEventListener("keydown", e => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT")) return;  // let formula field type freely
+      if (!document.getElementById("formulaView").hidden) return;  // formula mode has its own key handler
       const k = e.key;
       if (k === "ArrowLeft") { moveCaret(-1); e.preventDefault(); return; }
       if (k === "ArrowRight") { moveCaret(1); e.preventDefault(); return; }
@@ -1132,15 +1172,37 @@
     const appMode = document.getElementById("appMode");
     const calcView = document.getElementById("calcView");
     const formulaView = document.getElementById("formulaView");
-    const fmInput = document.getElementById("fmInput");
+    const fmDisplay = document.getElementById("fmDisplay");
+    const fmExport = document.getElementById("fmExport");
+    const fmFmtLabel = document.getElementById("fmFmtLabel");
     const fmPal = document.getElementById("fmPal");
     const fmTabs = document.getElementById("fmTabs");
-    const CARET = "";              // caret marker inside structure snippets
     let fmt = "uni";                     // "uni" = UnicodeMath, "tex" = LaTeX
     let curTab = "greek";
 
-    const G = (l, tex) => ({ l, tex });  // symbol: label + optional LaTeX form
-    const S = (l, uni, tex) => ({ l, uni, tex, cls: "struct" });  // structure template
+    // ---- model: Row = array of Node; Node = atom {k:"a",d,u,x} or structure with sub-rows ----
+    let root = [];
+    let fcaret = { row: root, i: 0 };
+    let pmap = new Map();
+    const atom = (d, u, x) => ({ k: "a", d: d, u: u != null ? u : d, x: x != null ? x : d });
+    function childRows(n) {
+      if (n.k === "frac" || n.k === "root") return [n.a, n.b];
+      if (n.k === "bigop") return [n.sub, n.sup];
+      if (n.k === "sup" || n.k === "sub" || n.k === "sqrt" || n.k === "acc") return [n.a];
+      return [];
+    }
+    function buildParents() {
+      pmap = new Map();
+      (function walk(row) { for (const n of row) childRows(n).forEach(r => { pmap.set(r, { node: n }); walk(r); }); })(root);
+    }
+    function findNode(target) {
+      let res = null;
+      (function walk(row) {
+        for (let i = 0; i < row.length; i++) { if (row[i] === target) { res = { row: row, i: i }; return; } childRows(row[i]).forEach(walk); }
+      })(root);
+      return res;
+    }
+    const G = (l, tex) => ({ l: l, tex: tex });
 
     const greek = [
       G("α","\\alpha"),G("β","\\beta"),G("γ","\\gamma"),G("δ","\\delta"),G("ε","\\epsilon"),
@@ -1163,80 +1225,191 @@
       G("∠","\\angle"),G("⊥","\\perp"),G("∥","\\parallel"),G("°","^\\circ"),
       G("ℏ","\\hbar"),G("ℝ","\\mathbb{R}"),G("ℂ","\\mathbb{C}"),G("ℤ","\\mathbb{Z}"),G("ℕ","\\mathbb{N}"),G("ℚ","\\mathbb{Q}")
     ];
+    // ---- insertion helpers ----
+    function insAt(nodes, into) {
+      fcaret.row.splice(fcaret.i, 0, ...nodes);
+      fcaret.i += nodes.length;
+      if (into) fcaret = { row: into, i: 0 };
+      fmRender();
+    }
+    function insAtomItem(it) { insAt([atom(it.l, it.l, it.tex != null ? it.tex : it.l)]); }
+    function insFrac() { const n = { k: "frac", a: [], b: [] }; insAt([n], n.a); }
+    function insFracSmart() {  // keyboard "/": pull the preceding value-run into the numerator
+      let start = fcaret.i;
+      while (start > 0) { const p = fcaret.row[start - 1]; if (p.k === "a" && /[0-9A-Za-zͰ-Ͽ.]/.test(p.d)) start--; else break; }
+      const num = fcaret.row.splice(start, fcaret.i - start);
+      const n = { k: "frac", a: num, b: [] };
+      fcaret.row.splice(start, 0, n);
+      fcaret = num.length ? { row: n.b, i: 0 } : { row: n.a, i: 0 };
+      fmRender();
+    }
+    function insSup() { const n = { k: "sup", a: [] }; insAt([n], n.a); }
+    function insSub() { const n = { k: "sub", a: [] }; insAt([n], n.a); }
+    function insSqrt() { const n = { k: "sqrt", a: [] }; insAt([n], n.a); }
+    function insRoot() { const n = { k: "root", a: [], b: [] }; insAt([n], n.a); }
+    function insAcc(kind) { const n = { k: "acc", kind: kind, a: [] }; insAt([n], n.a); }
+    function insBig(ch, tex) { const n = { k: "bigop", op: ch, tex: tex, sub: [], sup: [] }; insAt([n], n.sub); }
+    function insLim() { const n = { k: "bigop", op: "lim", tex: "\\lim", sub: [], sup: [] }; insAt([n], n.sub); }
+    function insPair(o, c, ox, cx) {
+      fcaret.row.splice(fcaret.i, 0, atom(o, o, ox != null ? ox : o), atom(c, c, cx != null ? cx : c));
+      fcaret.i += 1; fmRender();
+    }
+
     const struct = [
-      S("a/b 分数", "(" + CARET + ")/()", "\\frac{" + CARET + "}{}"),
-      S("xⁿ 上付き", "^(" + CARET + ")", "^{" + CARET + "}"),
-      S("xₙ 下付き", "_(" + CARET + ")", "_{" + CARET + "}"),
-      S("√ 平方根", "√(" + CARET + ")", "\\sqrt{" + CARET + "}"),
-      S("ⁿ√ 累乗根", "√(" + CARET + "&)", "\\sqrt[" + CARET + "]{}"),
-      S("∫ 積分", "∫_(" + CARET + ")^() ", "\\int_{" + CARET + "}^{}"),
-      S("∮ 周回積分", "∮_(" + CARET + ") ", "\\oint_{" + CARET + "}"),
-      S("∑ 総和", "∑_(" + CARET + ")^() ", "\\sum_{" + CARET + "}^{}"),
-      S("∏ 総乗", "∏_(" + CARET + ")^() ", "\\prod_{" + CARET + "}^{}"),
-      S("lim 極限", "lim_(" + CARET + "→) ", "\\lim_{" + CARET + " \\to }"),
-      S("( )", "(" + CARET + ")", "(" + CARET + ")"),
-      S("[ ]", "[" + CARET + "]", "[" + CARET + "]"),
-      S("{ }", "{" + CARET + "}", "\\{" + CARET + "\\}"),
-      S("|a|", "|" + CARET + "|", "|" + CARET + "|"),
-      S("⟨ ⟩", "⟨" + CARET + "⟩", "\\langle " + CARET + " \\rangle"),
-      S("â ハット", CARET + "̂", "\\hat{" + CARET + "}"),
-      S("ā バー", CARET + "̄", "\\bar{" + CARET + "}"),
-      S("a⃗ ベクトル", CARET + "⃗", "\\vec{" + CARET + "}"),
-      S("ȧ ドット", CARET + "̇", "\\dot{" + CARET + "}")
+      { l: "a/b 分数", act: insFrac }, { l: "xⁿ 上付き", act: insSup }, { l: "xₙ 下付き", act: insSub },
+      { l: "√ 平方根", act: insSqrt }, { l: "ⁿ√ 累乗根", act: insRoot },
+      { l: "∑ 総和", act: () => insBig("∑", "\\sum") }, { l: "∏ 総乗", act: () => insBig("∏", "\\prod") },
+      { l: "∫ 積分", act: () => insBig("∫", "\\int") }, { l: "∮ 周回積分", act: () => insBig("∮", "\\oint") },
+      { l: "lim 極限", act: insLim },
+      { l: "( )", act: () => insPair("(", ")") }, { l: "[ ]", act: () => insPair("[", "]") },
+      { l: "{ }", act: () => insPair("{", "}", "\\{", "\\}") }, { l: "|a|", act: () => insPair("|", "|") },
+      { l: "⟨ ⟩", act: () => insPair("⟨", "⟩", "\\langle ", "\\rangle ") },
+      { l: "â ハット", act: () => insAcc("hat") }, { l: "ā バー", act: () => insAcc("bar") },
+      { l: "a⃗ ベクトル", act: () => insAcc("vec") }, { l: "ȧ ドット", act: () => insAcc("dot") },
+      { l: "ã チルダ", act: () => insAcc("tilde") }
     ];
     const latin = [];
     "abcdefghijklmnopqrstuvwxyz".split("").forEach(c => latin.push(G(c)));
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach(c => latin.push(G(c)));
     "0123456789".split("").forEach(c => latin.push(G(c)));
-    ["+", "−", "=", "(", ")", ",", ".", "⋅"].forEach(c => latin.push(G(c)));
-    const PALS = { greek, sym, struct, latin };
+    [G("+"), G("−", "-"), G("="), G("("), G(")"), G(","), G("."), G("⋅", "\\cdot")].forEach(c => latin.push(c));
+    const PALS = { greek: greek, sym: sym, struct: struct, latin: latin };
 
-    function fmInsert(s) {
-      const start = fmInput.selectionStart, end = fmInput.selectionEnd;
-      const m = s.indexOf(CARET);
-      const clean = s.split(CARET).join("");
-      fmInput.setRangeText(clean, start, end, "end");
-      if (m >= 0) { const p = start + m; fmInput.setSelectionRange(p, p); }
-      fmInput.focus();
-    }
-    function chooseStr(it) {
-      if (fmt === "tex") {
-        let t = it.tex != null ? it.tex : it.l;
-        if (/^\\[a-zA-Z]+$/.test(t)) t += " ";   // bare LaTeX command needs a trailing space
-        return t;
+    // ---- export to UnicodeMath / LaTeX ----
+    function serRow(row, f) { return row.map(n => serNode(n, f)).join(""); }
+    function serNode(n, f) {
+      if (n.k === "a") { if (f === "tex") { let x = n.x; if (/^\\[a-zA-Z]+$/.test(x)) x += " "; return x; } return n.u; }
+      if (n.k === "bigop") {
+        const sub = serRow(n.sub, f), sup = serRow(n.sup, f);
+        if (f === "tex") return n.tex + (sub ? "_{" + sub + "}" : "") + (sup ? "^{" + sup + "}" : "") + " ";
+        return n.op + (sub ? "_(" + sub + ")" : "") + (sup ? "^(" + sup + ")" : "") + " ";
       }
-      return it.uni != null ? it.uni : it.l;
+      const A = n.a ? serRow(n.a, f) : "", B = n.b ? serRow(n.b, f) : "";
+      if (n.k === "frac") return f === "tex" ? "\\frac{" + A + "}{" + B + "}" : "(" + A + ")/(" + B + ")";
+      if (n.k === "sup") return f === "tex" ? "^{" + A + "}" : "^(" + A + ")";
+      if (n.k === "sub") return f === "tex" ? "_{" + A + "}" : "_(" + A + ")";
+      if (n.k === "sqrt") return f === "tex" ? "\\sqrt{" + A + "}" : "√(" + A + ")";
+      if (n.k === "root") return f === "tex" ? "\\sqrt[" + A + "]{" + B + "}" : "√(" + A + "&" + B + ")";
+      if (n.k === "acc") { const cmd = { hat: "\\hat", bar: "\\bar", vec: "\\vec", dot: "\\dot", tilde: "\\tilde" }[n.kind]; return f === "tex" ? cmd + "{" + A + "}" : cmd + "(" + A + ")"; }
+      return "";
     }
+
+    // ---- rendering (natural display) ----
+    function fcell(text, row, i) {
+      const s = el("span", "cell"); s.textContent = text;
+      s.addEventListener("mousedown", ev => { ev.preventDefault(); const r = s.getBoundingClientRect(); fcaret = { row: row, i: ev.clientX < r.left + r.width / 2 ? i : i + 1 }; fmRender(); });
+      return s;
+    }
+    function boxEl(cls, row) { const e = el("span", cls); renderRow(e, row, false); return e; }
+    function renderNode(n, row, i) {
+      if (n.k === "a") return fcell(n.d, row, i);
+      if (n.k === "frac") { const f = el("span", "disp-frac"), c = el("span", "disp-col"); c.appendChild(boxEl("disp-num", n.a)); c.appendChild(el("span", "disp-bar")); c.appendChild(boxEl("disp-den", n.b)); f.appendChild(c); return f; }
+      if (n.k === "sup") return boxEl("fm-sup", n.a);
+      if (n.k === "sub") return boxEl("fm-sub", n.a);
+      if (n.k === "bigop") {
+        const w = el("span", "fm-bigop"); const op = el("span", "fm-bigop-op"); op.textContent = n.op;
+        const lim = el("span", "fm-bigop-lim"); lim.appendChild(boxEl("fm-bigop-sup", n.sup)); lim.appendChild(boxEl("fm-bigop-sub", n.sub));
+        w.appendChild(op); w.appendChild(lim); return w;
+      }
+      if (n.k === "sqrt") { const w = el("span", "fm-sqrt"); const rad = el("span", "fm-sqrt-rad"); rad.textContent = "√"; w.appendChild(rad); w.appendChild(boxEl("fm-sqrt-body", n.a)); return w; }
+      if (n.k === "root") { const w = el("span", "fm-sqrt"); w.appendChild(boxEl("fm-root-idx", n.a)); const rad = el("span", "fm-sqrt-rad"); rad.textContent = "√"; w.appendChild(rad); w.appendChild(boxEl("fm-sqrt-body", n.b)); return w; }
+      if (n.k === "acc") { const col = el("span", "fm-acc"); const mk = el("span", "fm-acc-mark"); mk.textContent = { hat: "^", bar: "‾", vec: "→", dot: "·", tilde: "~" }[n.kind]; col.appendChild(mk); col.appendChild(boxEl("fm-acc-body", n.a)); return col; }
+      return document.createTextNode("");
+    }
+    function renderRow(container, row, isRoot) {
+      for (let i = 0; i <= row.length; i++) {
+        if (fcaret.row === row && fcaret.i === i) container.appendChild(caretSpan());
+        if (i < row.length) container.appendChild(renderNode(row[i], row, i));
+      }
+      if (row.length === 0) {
+        if (isRoot) { if (fcaret.row !== row) { const ph = el("span", "ph"); ph.textContent = "数式を入力"; container.appendChild(ph); } }
+        else container.appendChild(fbox());
+      }
+    }
+    function fmRender() {
+      buildParents();
+      fmDisplay.innerHTML = "";
+      renderRow(fmDisplay, root, true);
+      const cr = fmDisplay.querySelector(".caret");
+      if (cr) { const cl = cr.offsetLeft, vw = fmDisplay.clientWidth; if (cl < fmDisplay.scrollLeft + 12) fmDisplay.scrollLeft = Math.max(0, cl - 12); else if (cl > fmDisplay.scrollLeft + vw - 12) fmDisplay.scrollLeft = cl - vw + 12; }
+      fmExport.textContent = serRow(root, fmt) || "（空）";
+      fmFmtLabel.textContent = fmt === "tex" ? "LaTeX" : "UnicodeMath";
+    }
+
+    // ---- navigation / editing ----
+    function fmSlots() {
+      const out = [];
+      (function col(row) { out.push({ row: row, i: 0 }); for (let i = 0; i < row.length; i++) { childRows(row[i]).forEach(col); out.push({ row: row, i: i + 1 }); } })(root);
+      return out;
+    }
+    function fmMove(d) { const s = fmSlots(); let idx = s.findIndex(p => p.row === fcaret.row && p.i === fcaret.i); if (idx < 0) idx = 0; idx = Math.max(0, Math.min(s.length - 1, idx + d)); fcaret = s[idx]; fmRender(); }
+    function fmVert(dir) {
+      const p = pmap.get(fcaret.row); if (!p) return;
+      const node = p.node;
+      if (node.k === "bigop") { const t = dir < 0 ? node.sup : node.sub; if (t && t !== fcaret.row) { fcaret = { row: t, i: t.length }; fmRender(); } return; }
+      const kids = childRows(node); const fi = kids.indexOf(fcaret.row); const t = dir > 0 ? kids[fi + 1] : kids[fi - 1];
+      if (t) { fcaret = { row: t, i: t.length }; fmRender(); }
+    }
+    function fmBack() {
+      if (fcaret.i > 0) {
+        const prev = fcaret.row[fcaret.i - 1];
+        if (prev.k === "a") { fcaret.row.splice(fcaret.i - 1, 1); fcaret.i--; fmRender(); return; }
+        const kids = childRows(prev);
+        if (kids.every(r => r.length === 0)) { fcaret.row.splice(fcaret.i - 1, 1); fcaret.i--; fmRender(); return; }
+        const last = kids[kids.length - 1]; fcaret = { row: last, i: last.length }; fmRender(); return;
+      }
+      const p = pmap.get(fcaret.row);
+      if (p) { const loc = findNode(p.node); if (loc) { fcaret = { row: loc.row, i: loc.i }; fmRender(); } }
+    }
+    function fmDel() {
+      if (fcaret.i < fcaret.row.length) {
+        const nx = fcaret.row[fcaret.i];
+        if (nx.k === "a") { fcaret.row.splice(fcaret.i, 1); fmRender(); return; }
+        const kids = childRows(nx); if (kids.length) { fcaret = { row: kids[0], i: 0 }; fmRender(); }
+      }
+    }
+    function fmClearAll() { root = []; fcaret = { row: root, i: 0 }; fmRender(); }
+
+    // ---- palette / tabs / format / copy ----
     function renderPal() {
       fmPal.innerHTML = "";
       PALS[curTab].forEach(it => {
         const b = document.createElement("button");
-        b.className = "fm-key" + (it.cls ? " " + it.cls : "");
+        b.className = "fm-key" + (it.act ? " struct" : "");
         b.textContent = it.l;
-        b.addEventListener("click", () => fmInsert(chooseStr(it)));
+        b.addEventListener("click", () => { if (it.act) it.act(); else insAtomItem(it); });
         fmPal.appendChild(b);
       });
     }
+    fmTabs.addEventListener("click", e => { const b = e.target.closest("button[data-tab]"); if (!b) return; curTab = b.getAttribute("data-tab"); [...fmTabs.children].forEach(x => x.classList.remove("active")); b.classList.add("active"); renderPal(); });
+    document.getElementById("fmtToggle").addEventListener("click", e => { const b = e.target.closest("button[data-fmt]"); if (!b) return; fmt = b.getAttribute("data-fmt"); document.querySelectorAll("#fmtToggle button").forEach(x => x.classList.remove("active")); b.classList.add("active"); fmRender(); });
+    document.getElementById("fmCopy").addEventListener("click", () => { const s = serRow(root, fmt); if (!s.trim()) { showToast("数式が空です"); return; } copyText(s, document.getElementById("fmCopy")); });
+    document.getElementById("fmClear").addEventListener("click", fmClearAll);
+    document.querySelector(".fm-actions").addEventListener("click", e => {
+      const b = e.target.closest("button[data-fma]"); if (!b) return;
+      const a = b.getAttribute("data-fma");
+      if (a === "left") fmMove(-1); else if (a === "right") fmMove(1); else if (a === "up") fmVert(-1); else if (a === "down") fmVert(1); else if (a === "back") fmBack();
+    });
+    fmDisplay.addEventListener("mousedown", ev => { if (ev.target === fmDisplay) { ev.preventDefault(); fcaret = { row: root, i: root.length }; fmRender(); } });
 
-    fmTabs.addEventListener("click", e => {
-      const b = e.target.closest("button[data-tab]"); if (!b) return;
-      curTab = b.getAttribute("data-tab");
-      [...fmTabs.children].forEach(x => x.classList.remove("active"));
-      b.classList.add("active");
-      renderPal();
+    document.addEventListener("keydown", e => {
+      if (formulaView.hidden) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const k = e.key;
+      if (k === "ArrowLeft") { fmMove(-1); e.preventDefault(); return; }
+      if (k === "ArrowRight") { fmMove(1); e.preventDefault(); return; }
+      if (k === "ArrowUp") { fmVert(-1); e.preventDefault(); return; }
+      if (k === "ArrowDown") { fmVert(1); e.preventDefault(); return; }
+      if (k === "Backspace") { fmBack(); e.preventDefault(); return; }
+      if (k === "Delete") { fmDel(); e.preventDefault(); return; }
+      if (k === "Enter") { e.preventDefault(); return; }
+      if (k.length === 1) {
+        if (k === "/") insFracSmart(); else if (k === "^") insSup(); else if (k === "_") insSub();
+        else if (k === "*") insAt([atom("×", "×", "\\times")]); else if (k === "-") insAt([atom("−", "−", "-")]);
+        else insAt([atom(k)]);
+        e.preventDefault(); return;
+      }
     });
-    document.getElementById("fmtToggle").addEventListener("click", e => {
-      const b = e.target.closest("button[data-fmt]"); if (!b) return;
-      fmt = b.getAttribute("data-fmt");
-      document.querySelectorAll("#fmtToggle button").forEach(x => x.classList.remove("active"));
-      b.classList.add("active");
-      showToast(fmt === "tex" ? "LaTeX形式で挿入します" : "UnicodeMath形式で挿入します");
-    });
-    document.getElementById("fmCopy").addEventListener("click", () => {
-      if (!fmInput.value.trim()) { showToast("数式が空です"); return; }
-      copyText(fmInput.value, document.getElementById("fmCopy"));
-    });
-    document.getElementById("fmClear").addEventListener("click", () => { fmInput.value = ""; fmInput.focus(); });
 
     appMode.addEventListener("click", e => {
       const b = e.target.closest("button[data-app]"); if (!b) return;
@@ -1245,10 +1418,11 @@
       const isFormula = b.getAttribute("data-app") === "formula";
       formulaView.hidden = !isFormula;
       calcView.hidden = isFormula;
-      if (isFormula) fmInput.focus();
+      if (isFormula) fmRender();
     });
 
     renderPal();
+    fmRender();
 
     render();
     renderHistory();
