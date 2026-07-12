@@ -128,12 +128,8 @@
       font-weight: 600;
     }
 
-    .dpi-row select {
+    .dpi-row span {
       font-size: 0.9rem;
-      padding: 0.4rem 0.6rem;
-      border-radius: 8px;
-      border: 1px solid #ddd;
-      background: #fff;
       color: #1a1a2e;
     }
 
@@ -202,7 +198,7 @@
 </head>
 <body>
   <h1>📄 PDF → 画像</h1>
-  <p class="subtitle">PDFの各ページをPNG画像に変換（可逆圧縮・劣化なし）</p>
+  <p class="subtitle">PDFの各ページをPNG画像に変換（元のDPIを維持・可逆圧縮で劣化なし）</p>
 
   <div id="drop-zone">
     <span class="icon">📄</span>
@@ -218,13 +214,8 @@
       <div id="file-meta" class="file-meta"></div>
     </div>
     <div class="dpi-row">
-      <label for="dpi-select">解像度</label>
-      <select id="dpi-select">
-        <option value="150">150 DPI</option>
-        <option value="300" selected>300 DPI（推奨）</option>
-        <option value="450">450 DPI</option>
-        <option value="600">600 DPI（高精細）</option>
-      </select>
+      <label>解像度</label>
+      <span id="dpi-info">元PDFのDPIを自動検出</span>
     </div>
     <div id="progress-wrap">
       <progress id="progress" value="0" max="100"></progress>
@@ -244,7 +235,7 @@
     const statusEl = document.getElementById('status');
     const fileNameEl = document.getElementById('file-name');
     const fileMetaEl = document.getElementById('file-meta');
-    const dpiSelect = document.getElementById('dpi-select');
+    const dpiInfoEl = document.getElementById('dpi-info');
     const progressWrap = document.getElementById('progress-wrap');
     const progressEl = document.getElementById('progress');
     const progressLabel = document.getElementById('progress-label');
@@ -254,6 +245,41 @@
 
     let pdfFile = null;
     let pdfDoc = null;
+
+    const DEFAULT_DPI = 300; // 埋め込み画像が見つからないページ(ベクター/テキストのみ)向けの既定値
+    const MIN_DPI = 72;
+    const MAX_DPI = 1200;
+
+    // ページに埋め込まれた画像から元解像度(DPI)を検出する。
+    // 複数画像がある場合は最大面積のものを採用し、見つからなければ既定値にフォールバックする。
+    async function detectPageDpi(page) {
+      const opList = await page.getOperatorList();
+      const OPS = pdfjsLib.OPS;
+      const imageOps = new Set([OPS.paintImageXObject, OPS.paintJpegXObject, OPS.paintImageXObjectRepeat]);
+      const names = [];
+      for (let i = 0; i < opList.fnArray.length; i++) {
+        if (imageOps.has(opList.fnArray[i])) names.push(opList.argsArray[i][0]);
+      }
+
+      let best = null;
+      for (const name of names) {
+        const img = await new Promise(resolve => {
+          try { page.objs.get(name, resolve); } catch (e) { resolve(null); }
+        });
+        if (img && img.width && img.height) {
+          const area = img.width * img.height;
+          if (!best || area > best.area) best = { area, w: img.width, h: img.height };
+        }
+      }
+
+      if (!best) return { dpi: DEFAULT_DPI, detected: false };
+
+      const viewport = page.getViewport({ scale: 1 });
+      const dpiX = best.w / (viewport.width / 72);
+      const dpiY = best.h / (viewport.height / 72);
+      const dpi = Math.round((dpiX + dpiY) / 2);
+      return { dpi: Math.min(MAX_DPI, Math.max(MIN_DPI, dpi)), detected: true };
+    }
 
     dropZone.addEventListener('click', () => fileInput.click());
 
@@ -290,6 +316,13 @@
         const arrayBuffer = await file.arrayBuffer();
         pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         fileMetaEl.textContent = `${pdfDoc.numPages} ページ`;
+
+        dpiInfoEl.textContent = '検出中...';
+        const page1 = await pdfDoc.getPage(1);
+        const { dpi, detected } = await detectPageDpi(page1);
+        dpiInfoEl.textContent = detected
+          ? `約 ${dpi} DPI（元画像から検出）`
+          : `${dpi} DPI（画像を検出できないため既定値）`;
       } catch (err) {
         showError('PDFの読み込みに失敗しました: ' + err.message);
         console.error(err);
@@ -325,6 +358,7 @@
       dropZone.style.display = '';
       statusEl.style.display = 'none';
       errorMsg.textContent = '';
+      dpiInfoEl.textContent = '元PDFのDPIを自動検出';
       btnConvert.disabled = false;
     });
 
@@ -356,7 +390,7 @@
       return new Blob([arr], { type: mime });
     }
 
-    // ── PDF → PNG（可逆圧縮。解像度(DPI)のみユーザーが選択、画質劣化なし） ──
+    // ── PDF → PNG（各ページの元画像から検出したDPIをそのまま維持。可逆圧縮で劣化なし） ──
     btnConvert.addEventListener('click', async () => {
       if (!pdfDoc) return;
       setBusy(true);
@@ -364,8 +398,6 @@
       errorMsg.textContent = '';
 
       try {
-        const dpi = Number(dpiSelect.value);
-        const scale = dpi / 72; // PDFの座標単位(pt, 72dpi基準)を目的DPIへ変換
         const numPages = pdfDoc.numPages;
         const baseName = safeBaseName();
         const pad = String(numPages).length;
@@ -377,6 +409,8 @@
           progressEl.value = Math.round(((i - 1) / numPages) * 100);
 
           const page = await pdfDoc.getPage(i);
+          const { dpi } = await detectPageDpi(page);
+          const scale = dpi / 72; // PDFの座標単位(pt, 72dpi基準)を検出DPIへ変換
           const viewport = page.getViewport({ scale });
           const canvas = document.createElement('canvas');
           canvas.width = Math.ceil(viewport.width);
