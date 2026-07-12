@@ -249,6 +249,16 @@
     const DEFAULT_DPI = 300; // 埋め込み画像が見つからないページ(ベクター/テキストのみ)向けの既定値
     const MIN_DPI = 72;
     const MAX_DPI = 1200;
+    const MAX_CANVAS_PIXELS = 50_000_000; // 1ページあたりの安全上限(約200MBのRGBAバッファ相当)。超える場合はDPIを下げて確保に失敗しないようにする
+
+    // 検出DPIで描画した場合の画素数が上限を超えるなら、上限内に収まるようDPIを下げる
+    function clampDpiToSafeCanvas(dpi, pageWidthPt, pageHeightPt) {
+      const scale = dpi / 72;
+      const pixels = (pageWidthPt * scale) * (pageHeightPt * scale);
+      if (pixels <= MAX_CANVAS_PIXELS) return { dpi, clamped: false };
+      const factor = Math.sqrt(MAX_CANVAS_PIXELS / pixels);
+      return { dpi: Math.max(MIN_DPI, Math.floor(dpi * factor)), clamped: true };
+    }
 
     // ページに埋め込まれた画像から元解像度(DPI)を検出する。
     // 複数画像がある場合は最大面積のものを採用し、見つからなければ既定値にフォールバックする。
@@ -381,16 +391,36 @@
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    function dataUrlToBlob(dataUrl) {
-      const [meta, base64] = dataUrl.split(',');
-      const mime = meta.match(/:(.*?);/)[1];
-      const bin = atob(base64);
-      const arr = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      return new Blob([arr], { type: mime });
+    function canvasToPngBlob(canvas) {
+      return new Promise((resolve, reject) => {
+        canvas.toBlob(blob => {
+          if (blob) resolve(blob);
+          else reject(new Error('canvas.toBlob failed'));
+        }, 'image/png');
+      });
+    }
+
+    const PAGE_TIMEOUT_MS = 30000; // 1ページの処理に許す上限時間。pdf.js内部が想定外に固まった場合の保険
+
+    function withTimeout(promise, ms, label) {
+      let timer;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`ページ処理がタイムアウトしました(${label})`)), ms);
+      });
+      return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+    }
+
+    function formatDuration(ms) {
+      const totalSec = Math.round(ms / 1000);
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      return m > 0 ? `${m}分${s}秒` : `${s}秒`;
     }
 
     // ── PDF → PNG（各ページの元画像から検出したDPIをそのまま維持。可逆圧縮で劣化なし） ──
+    // 1ページずつ描画→PNG化→(必要なら)ZIPへ追加→そのページのメモリを解放、を繰り返す。
+    // pdf.jsはgetPage()したページを内部キャッシュし続けるため、page.cleanup()を呼ばないと
+    // ページ数の多い/高解像度なPDFでメモリが増え続け、途中でタブが落ちて処理が止まる。
     btnConvert.addEventListener('click', async () => {
       if (!pdfDoc) return;
       setBusy(true);
@@ -402,42 +432,81 @@
         const baseName = safeBaseName();
         const pad = String(numPages).length;
 
-        const pngBlobs = [];
+        const zip = numPages > 1 ? new JSZip() : null;
+        let singleBlob = null;
+        let clampedCount = 0;
+        const failedPages = [];
+        const startTime = Date.now();
 
         for (let i = 1; i <= numPages; i++) {
-          progressLabel.textContent = `描画中 ${i} / ${numPages} ページ`;
+          const elapsedMs = Date.now() - startTime;
+          if (i === 1) {
+            progressLabel.textContent = `描画中 ${i} / ${numPages} ページ`;
+          } else {
+            const avgMs = elapsedMs / (i - 1);
+            const remainingMs = avgMs * (numPages - i + 1);
+            progressLabel.textContent =
+              `描画中 ${i} / ${numPages} ページ（経過 ${formatDuration(elapsedMs)}・残り約 ${formatDuration(remainingMs)}）`;
+          }
           progressEl.value = Math.round(((i - 1) / numPages) * 100);
 
-          const page = await pdfDoc.getPage(i);
-          const { dpi } = await detectPageDpi(page);
-          const scale = dpi / 72; // PDFの座標単位(pt, 72dpi基準)を検出DPIへ変換
-          const viewport = page.getViewport({ scale });
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.ceil(viewport.width);
-          canvas.height = Math.ceil(viewport.height);
-          const ctx = canvas.getContext('2d');
-          await page.render({ canvasContext: ctx, viewport }).promise;
+          try {
+            const blob = await withTimeout((async () => {
+              const page = await pdfDoc.getPage(i);
+              const { dpi: detectedDpi } = await detectPageDpi(page);
+              const pageSizePt = page.getViewport({ scale: 1 });
+              const { dpi, clamped } = clampDpiToSafeCanvas(detectedDpi, pageSizePt.width, pageSizePt.height);
+              if (clamped) clampedCount++;
 
-          const dataUrl = canvas.toDataURL('image/png'); // PNGは可逆圧縮
-          pngBlobs.push({ name: `${baseName}_${String(i).padStart(pad, '0')}.png`, blob: dataUrlToBlob(dataUrl) });
+              const scale = dpi / 72; // PDFの座標単位(pt, 72dpi基準)を検出DPIへ変換
+              const viewport = page.getViewport({ scale });
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.ceil(viewport.width);
+              canvas.height = Math.ceil(viewport.height);
+              const ctx = canvas.getContext('2d');
+              await page.render({ canvasContext: ctx, viewport }).promise;
 
-          canvas.width = 0;
-          canvas.height = 0;
+              const result = await canvasToPngBlob(canvas); // PNGは可逆圧縮
+
+              canvas.width = 0;
+              canvas.height = 0;
+              return result;
+              // page.cleanup()は呼ばない: 内容が重複するページ同士でpdf.jsが画像を
+              // 共有キャッシュ(commonObjs)することがあり、片方をcleanup()すると
+              // もう片方のpage.objs.get()が二度と解決せず無限に固まることが確認されている。
+            })(), PAGE_TIMEOUT_MS, `page ${i}`);
+
+            if (zip) {
+              zip.file(`${baseName}_${String(i).padStart(pad, '0')}.png`, blob);
+            } else {
+              singleBlob = blob;
+            }
+          } catch (pageErr) {
+            console.error(`page ${i} failed:`, pageErr);
+            failedPages.push(i);
+          }
+        }
+
+        if (zip && numPages === failedPages.length) {
+          throw new Error('すべてのページの変換に失敗しました。');
         }
 
         progressEl.value = 100;
+        const note = [
+          clampedCount ? `${clampedCount}ページは安全のため解像度を自動的に下げました。` : '',
+          failedPages.length ? `${failedPages.length}ページ(${failedPages.join(', ')})の変換に失敗したためスキップしました。` : '',
+        ].filter(Boolean).join(' ');
 
-        if (numPages === 1) {
-          progressLabel.textContent = '完了！ダウンロードを開始します…';
-          downloadBlob(pngBlobs[0].blob, `${baseName}.png`);
-        } else {
-          progressLabel.textContent = 'ZIPを作成中…';
-          const zip = new JSZip();
-          pngBlobs.forEach(p => zip.file(p.name, p.blob));
+        if (zip) {
+          progressLabel.textContent = `ZIPを作成中…（描画に${formatDuration(Date.now() - startTime)}）`;
           const zipBlob = await zip.generateAsync({ type: 'blob' });
-          progressLabel.textContent = '完了！ダウンロードを開始します…';
+          progressLabel.textContent = `完了！（合計${formatDuration(Date.now() - startTime)}）ダウンロードを開始します…`;
           downloadBlob(zipBlob, `${baseName}_images.zip`);
+        } else if (singleBlob) {
+          progressLabel.textContent = `完了！（${formatDuration(Date.now() - startTime)}）ダウンロードを開始します…`;
+          downloadBlob(singleBlob, `${baseName}.png`);
         }
+        if (note) showError(note);
       } catch (err) {
         showError('画像変換中にエラーが発生しました: ' + err.message);
         console.error(err);
