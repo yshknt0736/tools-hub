@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>画像フォルダ → PDF</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -157,6 +158,24 @@
     #btn-generate:active { transform: scale(0.98); }
     #btn-generate:disabled { background: #b0b8c8; cursor: not-allowed; transform: none; }
 
+    #btn-compress {
+      width: 100%;
+      margin-top: 0.6rem;
+      padding: 0.85rem;
+      background: #0ca678;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    #btn-compress:hover { background: #099268; }
+    #btn-compress:active { transform: scale(0.98); }
+    #btn-compress:disabled { background: #b0b8c8; cursor: not-allowed; transform: none; }
+
     #btn-reset {
       width: 100%;
       margin-top: 0.6rem;
@@ -181,8 +200,8 @@
   </style>
 </head>
 <body>
-  <h1>画像フォルダ → PDF</h1>
-  <p class="subtitle">フォルダをドロップするか、クリックして選択してください</p>
+  <h1>画像フォルダ → PDF / 圧縮</h1>
+  <p class="subtitle">フォルダをドロップして、PDF化または画像圧縮を選べます</p>
 
   <div id="drop-zone">
     <span class="icon">🗂️</span>
@@ -202,6 +221,7 @@
       <div class="progress-label" id="progress-label">処理中...</div>
     </div>
     <button id="btn-generate">PDFを生成してダウンロード</button>
+    <button id="btn-compress">画像を圧縮してダウンロード (ZIP)</button>
     <button id="btn-reset">リセット</button>
     <div class="error-msg" id="error-msg"></div>
   </div>
@@ -224,6 +244,7 @@
     const progressEl = document.getElementById('progress');
     const progressLabel = document.getElementById('progress-label');
     const btnGenerate = document.getElementById('btn-generate');
+    const btnCompress = document.getElementById('btn-compress');
     const btnReset = document.getElementById('btn-reset');
     const errorMsg = document.getElementById('error-msg');
 
@@ -374,16 +395,26 @@
       statusEl.style.display = 'none';
       errorMsg.textContent = '';
       btnGenerate.disabled = false;
+      btnCompress.disabled = false;
     });
 
-    // 圧縮設定：表示に不要な高解像度分だけを削るので見た目の劣化はほぼ無い
-    const MAX_DIM = 2500;       // 長辺の最大ピクセル数（これを超える分だけ縮小）
-    const TARGET_DPI = 150;     // ページサイズ換算に用いるDPI（150DPIで印刷相当）
+    // 圧縮設定：解像度は維持し、高品質JPEG化のみで容量を削減する
     const JPEG_QUALITY = 0.92;  // 高品質JPEG（0.92では劣化はほぼ視認できない）
+    const PX_TO_PT = 72 / 96;   // 96dpi のピクセルを PDF のポイント(1/72inch)へ変換
 
+    function setBusy(busy) {
+      btnGenerate.disabled = busy;
+      btnCompress.disabled = busy;
+    }
+
+    function safeBaseName() {
+      return (folderName || 'images').replace(/[\\/:*?"<>|]/g, '_').trim() || 'images';
+    }
+
+    // ── PDF生成（圧縮なし：元画像をそのまま埋め込む） ──────────────
     btnGenerate.addEventListener('click', async () => {
       if (!imageFiles.length) return;
-      btnGenerate.disabled = true;
+      setBusy(true);
       progressWrap.style.display = 'block';
       errorMsg.textContent = '';
 
@@ -396,36 +427,87 @@
           progressLabel.textContent = `処理中 ${i + 1} / ${imageFiles.length}：${file.name}`;
           progressEl.value = Math.round((i / imageFiles.length) * 100);
 
-          const rawUrl = await readAsDataURL(file);
-          // リサイズ＋JPEG再エンコードで圧縮（tw/th は圧縮後のピクセル寸法）
-          const { dataUrl, w: tw, h: th } = await compressImage(rawUrl);
+          const dataUrl = await readAsDataURL(file);
+          const img = await loadImage(dataUrl);
+          const w = img.naturalWidth, h = img.naturalHeight;
 
-          // ページは画像の縦横比そのまま（A4固定・余白なし）。150DPI相当のpt寸法にする
-          const pageW = (tw / TARGET_DPI) * 72;
-          const pageH = (th / TARGET_DPI) * 72;
-          const orientation = pageW > pageH ? 'l' : 'p';
+          // ページは画像の縦横比そのまま（A4固定・余白なし）。元解像度を維持
+          const pw = w * PX_TO_PT, ph = h * PX_TO_PT;
+          const orientation = pw >= ph ? 'landscape' : 'portrait';
 
           if (i === 0) {
-            pdf = new jsPDF({ unit: 'pt', compress: true, orientation, format: [pageW, pageH] });
+            pdf = new jsPDF({ unit: 'pt', compress: true, format: [pw, ph], orientation });
           } else {
-            pdf.addPage([pageW, pageH], orientation);
+            pdf.addPage([pw, ph], orientation);
           }
-          // ページ全面に配置（縦横比が一致するので歪みは生じない）
-          pdf.addImage(dataUrl, 'JPEG', 0, 0, pageW, pageH, undefined, 'FAST');
+          const fmt = file.type === 'image/png' ? 'PNG' : 'JPEG';
+          pdf.addImage(dataUrl, fmt, 0, 0, pw, ph, undefined, 'FAST');
         }
 
         progressEl.value = 100;
         progressLabel.textContent = '完了！ダウンロードを開始します…';
-        const safeName = (folderName || 'images')
-          .replace(/[\\/:*?"<>|]/g, '_').trim() || 'images';
-        pdf.save(safeName + '.pdf');
+        pdf.save(safeBaseName() + '.pdf');
       } catch (err) {
         showError('PDF生成中にエラーが発生しました: ' + err.message);
         console.error(err);
       } finally {
-        btnGenerate.disabled = false;
+        setBusy(false);
       }
     });
+
+    // ── 画像圧縮（リサイズ＋高品質JPEG）→ ZIPでまとめてダウンロード ──
+    btnCompress.addEventListener('click', async () => {
+      if (!imageFiles.length) return;
+      setBusy(true);
+      progressWrap.style.display = 'block';
+      errorMsg.textContent = '';
+
+      try {
+        const zip = new JSZip();
+        const usedNames = new Set();
+
+        for (let i = 0; i < imageFiles.length; i++) {
+          const file = imageFiles[i];
+          progressLabel.textContent = `圧縮中 ${i + 1} / ${imageFiles.length}：${file.name}`;
+          progressEl.value = Math.round((i / imageFiles.length) * 100);
+
+          const rawUrl = await readAsDataURL(file);
+          const { dataUrl } = await compressImage(rawUrl);
+          const base64 = dataUrl.split(',')[1];
+
+          // 拡張子は再エンコード後の .jpg に統一。名前衝突は連番で回避
+          let name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+          let n = 1;
+          while (usedNames.has(name)) {
+            name = file.name.replace(/\.[^.]+$/, '') + `_${n++}.jpg`;
+          }
+          usedNames.add(name);
+          zip.file(name, base64, { base64: true });
+        }
+
+        progressLabel.textContent = 'ZIPを作成中…';
+        const blob = await zip.generateAsync({ type: 'blob' });
+        progressEl.value = 100;
+        progressLabel.textContent = '完了！ダウンロードを開始します…';
+        downloadBlob(blob, safeBaseName() + '_compressed.zip');
+      } catch (err) {
+        showError('画像圧縮中にエラーが発生しました: ' + err.message);
+        console.error(err);
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
 
     function readAsDataURL(file) {
       return new Promise((resolve, reject) => {
@@ -445,26 +527,21 @@
       });
     }
 
-    // 長辺が MAX_DIM を超える場合のみ縮小し、高品質JPEGへ再エンコードして圧縮する。
-    // 透過PNGは白背景で塗りつぶす（PDFでは透過が想定外の見え方になるため）。
+    // 解像度は維持したまま高品質JPEGへ再エンコードして容量を削減する。
+    // 透過PNGは白背景で塗りつぶす（JPEGは透過を保持できないため）。
     async function compressImage(dataUrl) {
       const img = await loadImage(dataUrl);
       const w = img.naturalWidth, h = img.naturalHeight;
-      const scale = Math.min(1, MAX_DIM / Math.max(w, h));
-      const tw = Math.max(1, Math.round(w * scale));
-      const th = Math.max(1, Math.round(h * scale));
 
       const canvas = document.createElement('canvas');
-      canvas.width = tw;
-      canvas.height = th;
+      canvas.width = w;
+      canvas.height = h;
       const ctx = canvas.getContext('2d');
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, tw, th);
-      ctx.drawImage(img, 0, 0, tw, th);
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0);
 
-      return { dataUrl: canvas.toDataURL('image/jpeg', JPEG_QUALITY), w: tw, h: th };
+      return { dataUrl: canvas.toDataURL('image/jpeg', JPEG_QUALITY), w, h };
     }
 
 </script>
