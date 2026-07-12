@@ -376,6 +376,11 @@
       btnGenerate.disabled = false;
     });
 
+    // 圧縮設定：表示に不要な高解像度分だけを削るので見た目の劣化はほぼ無い
+    const MAX_DIM = 2500;       // 長辺の最大ピクセル数（これを超える分だけ縮小）
+    const TARGET_DPI = 150;     // ページサイズ換算に用いるDPI（150DPIで印刷相当）
+    const JPEG_QUALITY = 0.92;  // 高品質JPEG（0.92では劣化はほぼ視認できない）
+
     btnGenerate.addEventListener('click', async () => {
       if (!imageFiles.length) return;
       btnGenerate.disabled = true;
@@ -384,8 +389,6 @@
 
       try {
         const { jsPDF } = window.jspdf;
-        // 96dpi のピクセルを PDF のポイント(1/72inch)へ変換する係数
-        const PX_TO_PT = 72 / 96;
         let pdf = null;
 
         for (let i = 0; i < imageFiles.length; i++) {
@@ -393,20 +396,22 @@
           progressLabel.textContent = `処理中 ${i + 1} / ${imageFiles.length}：${file.name}`;
           progressEl.value = Math.round((i / imageFiles.length) * 100);
 
-          const dataUrl = await readAsDataURL(file);
-          const { w, h } = await getImageDimensions(dataUrl);
+          const rawUrl = await readAsDataURL(file);
+          // リサイズ＋JPEG再エンコードで圧縮（tw/th は圧縮後のピクセル寸法）
+          const { dataUrl, w: tw, h: th } = await compressImage(rawUrl);
 
-          // ページを画像と同じサイズにして、画像を全面（余白なし）で配置する
-          const pw = w * PX_TO_PT, ph = h * PX_TO_PT;
-          const orientation = pw >= ph ? 'landscape' : 'portrait';
+          // ページは画像の縦横比そのまま（A4固定・余白なし）。150DPI相当のpt寸法にする
+          const pageW = (tw / TARGET_DPI) * 72;
+          const pageH = (th / TARGET_DPI) * 72;
+          const orientation = pageW > pageH ? 'l' : 'p';
 
-          if (!pdf) {
-            pdf = new jsPDF({ unit: 'pt', compress: true, format: [pw, ph], orientation });
+          if (i === 0) {
+            pdf = new jsPDF({ unit: 'pt', compress: true, orientation, format: [pageW, pageH] });
           } else {
-            pdf.addPage([pw, ph], orientation);
+            pdf.addPage([pageW, pageH], orientation);
           }
-          const fmt = file.type === 'image/png' ? 'PNG' : 'JPEG';
-          pdf.addImage(dataUrl, fmt, 0, 0, pw, ph, undefined, 'FAST');
+          // ページ全面に配置（縦横比が一致するので歪みは生じない）
+          pdf.addImage(dataUrl, 'JPEG', 0, 0, pageW, pageH, undefined, 'FAST');
         }
 
         progressEl.value = 100;
@@ -431,14 +436,37 @@
       });
     }
 
-    function getImageDimensions(dataUrl) {
+    function loadImage(dataUrl) {
       return new Promise((resolve, reject) => {
         const img = new Image();
-        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onload = () => resolve(img);
         img.onerror = reject;
         img.src = dataUrl;
       });
     }
-  </script>
+
+    // 長辺が MAX_DIM を超える場合のみ縮小し、高品質JPEGへ再エンコードして圧縮する。
+    // 透過PNGは白背景で塗りつぶす（PDFでは透過が想定外の見え方になるため）。
+    async function compressImage(dataUrl) {
+      const img = await loadImage(dataUrl);
+      const w = img.naturalWidth, h = img.naturalHeight;
+      const scale = Math.min(1, MAX_DIM / Math.max(w, h));
+      const tw = Math.max(1, Math.round(w * scale));
+      const th = Math.max(1, Math.round(h * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = tw;
+      canvas.height = th;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, tw, th);
+      ctx.drawImage(img, 0, 0, tw, th);
+
+      return { dataUrl: canvas.toDataURL('image/jpeg', JPEG_QUALITY), w: tw, h: th };
+    }
+
+</script>
 </body>
 </html>
