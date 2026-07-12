@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF → 画像</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      color: #1a1a2e;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+    }
+
+    #drop-zone {
+      width: min(480px, 100%);
+      border: 2.5px dashed #b0b8c8;
+      border-radius: 16px;
+      padding: 3.5rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #fff;
+      user-select: none;
+    }
+
+    #drop-zone.drag-over {
+      border-color: #4f6ef7;
+      background: #f0f3ff;
+      transform: scale(1.01);
+    }
+
+    #drop-zone .icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    #drop-zone p {
+      color: #555;
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    #drop-zone .hint {
+      font-size: 0.8rem;
+      color: #aaa;
+      margin-top: 0.5rem;
+    }
+
+    #file-input {
+      display: none;
+    }
+
+    #status {
+      width: min(480px, 100%);
+      margin-top: 1.5rem;
+      display: none;
+    }
+
+    .file-list {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1rem 1.2rem;
+      border: 1px solid #e8eaf0;
+      margin-bottom: 1rem;
+    }
+
+    .file-list-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #888;
+      margin-bottom: 0.6rem;
+    }
+
+    .file-item {
+      font-size: 0.9rem;
+      color: #333;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-meta {
+      font-size: 0.8rem;
+      color: #888;
+      margin-top: 0.3rem;
+    }
+
+    .dpi-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #fff;
+      border: 1px solid #e8eaf0;
+      border-radius: 12px;
+      padding: 0.8rem 1.2rem;
+      margin-bottom: 1rem;
+    }
+
+    .dpi-row label {
+      font-size: 0.85rem;
+      color: #444;
+      font-weight: 600;
+    }
+
+    .dpi-row select {
+      font-size: 0.9rem;
+      padding: 0.4rem 0.6rem;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      background: #fff;
+      color: #1a1a2e;
+    }
+
+    #progress-wrap {
+      display: none;
+      margin-bottom: 1rem;
+    }
+
+    progress {
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      appearance: none;
+      overflow: hidden;
+    }
+
+    progress::-webkit-progress-bar { background: #e8eaf0; border-radius: 999px; }
+    progress::-webkit-progress-value { background: #4f6ef7; border-radius: 999px; transition: width 0.1s; }
+
+    .progress-label {
+      font-size: 0.8rem;
+      color: #666;
+      margin-top: 0.4rem;
+      text-align: center;
+    }
+
+    #btn-convert {
+      width: 100%;
+      padding: 0.85rem;
+      background: #4f6ef7;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    #btn-convert:hover { background: #3a58e0; }
+    #btn-convert:active { transform: scale(0.98); }
+    #btn-convert:disabled { background: #b0b8c8; cursor: not-allowed; transform: none; }
+
+    #btn-reset {
+      width: 100%;
+      margin-top: 0.6rem;
+      padding: 0.6rem;
+      background: transparent;
+      color: #888;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    #btn-reset:hover { color: #444; border-color: #aaa; }
+
+    .error-msg {
+      color: #e05252;
+      font-size: 0.85rem;
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>📄 PDF → 画像</h1>
+  <p class="subtitle">PDFの各ページをPNG画像に変換（可逆圧縮・劣化なし）</p>
+
+  <div id="drop-zone">
+    <span class="icon">📄</span>
+    <p>PDFをここにドラッグ＆ドロップ</p>
+    <p class="hint">対応形式: PDF（1ファイル）</p>
+    <input type="file" id="file-input" accept="application/pdf">
+  </div>
+
+  <div id="status">
+    <div class="file-list">
+      <div class="file-list-title">選択したPDF</div>
+      <div id="file-name" class="file-item"></div>
+      <div id="file-meta" class="file-meta"></div>
+    </div>
+    <div class="dpi-row">
+      <label for="dpi-select">解像度</label>
+      <select id="dpi-select">
+        <option value="150">150 DPI</option>
+        <option value="300" selected>300 DPI（推奨）</option>
+        <option value="450">450 DPI</option>
+        <option value="600">600 DPI（高精細）</option>
+      </select>
+    </div>
+    <div id="progress-wrap">
+      <progress id="progress" value="0" max="100"></progress>
+      <div class="progress-label" id="progress-label">処理中...</div>
+    </div>
+    <button id="btn-convert">画像(PNG)に変換してダウンロード</button>
+    <button id="btn-reset">リセット</button>
+    <div class="error-msg" id="error-msg"></div>
+  </div>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const statusEl = document.getElementById('status');
+    const fileNameEl = document.getElementById('file-name');
+    const fileMetaEl = document.getElementById('file-meta');
+    const dpiSelect = document.getElementById('dpi-select');
+    const progressWrap = document.getElementById('progress-wrap');
+    const progressEl = document.getElementById('progress');
+    const progressLabel = document.getElementById('progress-label');
+    const btnConvert = document.getElementById('btn-convert');
+    const btnReset = document.getElementById('btn-reset');
+    const errorMsg = document.getElementById('error-msg');
+
+    let pdfFile = null;
+    let pdfDoc = null;
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const files = Array.from(e.dataTransfer.files || []).filter(f => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'));
+      if (files.length) setFile(files[0]);
+      else dropZoneError('PDFファイルをドロップしてください。');
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length) setFile(fileInput.files[0]);
+    });
+
+    async function setFile(file) {
+      pdfFile = file;
+      errorMsg.textContent = '';
+      clearDropZoneError();
+      fileNameEl.textContent = file.name;
+      fileMetaEl.textContent = 'PDFを読み込み中...';
+      dropZone.style.display = 'none';
+      statusEl.style.display = 'block';
+      progressWrap.style.display = 'none';
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        fileMetaEl.textContent = `${pdfDoc.numPages} ページ`;
+      } catch (err) {
+        showError('PDFの読み込みに失敗しました: ' + err.message);
+        console.error(err);
+        pdfDoc = null;
+      }
+    }
+
+    function dropZoneError(msg) {
+      let el = document.getElementById('dz-error');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'dz-error';
+        el.className = 'error-msg';
+        el.style.marginTop = '1rem';
+        dropZone.after(el);
+      }
+      el.textContent = msg;
+    }
+
+    function clearDropZoneError() {
+      const el = document.getElementById('dz-error');
+      if (el) el.textContent = '';
+    }
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+    }
+
+    btnReset.addEventListener('click', () => {
+      pdfFile = null;
+      pdfDoc = null;
+      fileInput.value = '';
+      dropZone.style.display = '';
+      statusEl.style.display = 'none';
+      errorMsg.textContent = '';
+      btnConvert.disabled = false;
+    });
+
+    function setBusy(busy) {
+      btnConvert.disabled = busy;
+    }
+
+    function safeBaseName() {
+      return (pdfFile?.name || 'pdf').replace(/\.pdf$/i, '').replace(/[\\/:*?"<>|]/g, '_').trim() || 'pdf';
+    }
+
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function dataUrlToBlob(dataUrl) {
+      const [meta, base64] = dataUrl.split(',');
+      const mime = meta.match(/:(.*?);/)[1];
+      const bin = atob(base64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return new Blob([arr], { type: mime });
+    }
+
+    // ── PDF → PNG（可逆圧縮。解像度(DPI)のみユーザーが選択、画質劣化なし） ──
+    btnConvert.addEventListener('click', async () => {
+      if (!pdfDoc) return;
+      setBusy(true);
+      progressWrap.style.display = 'block';
+      errorMsg.textContent = '';
+
+      try {
+        const dpi = Number(dpiSelect.value);
+        const scale = dpi / 72; // PDFの座標単位(pt, 72dpi基準)を目的DPIへ変換
+        const numPages = pdfDoc.numPages;
+        const baseName = safeBaseName();
+        const pad = String(numPages).length;
+
+        const pngBlobs = [];
+
+        for (let i = 1; i <= numPages; i++) {
+          progressLabel.textContent = `描画中 ${i} / ${numPages} ページ`;
+          progressEl.value = Math.round(((i - 1) / numPages) * 100);
+
+          const page = await pdfDoc.getPage(i);
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          const ctx = canvas.getContext('2d');
+          await page.render({ canvasContext: ctx, viewport }).promise;
+
+          const dataUrl = canvas.toDataURL('image/png'); // PNGは可逆圧縮
+          pngBlobs.push({ name: `${baseName}_${String(i).padStart(pad, '0')}.png`, blob: dataUrlToBlob(dataUrl) });
+
+          canvas.width = 0;
+          canvas.height = 0;
+        }
+
+        progressEl.value = 100;
+
+        if (numPages === 1) {
+          progressLabel.textContent = '完了！ダウンロードを開始します…';
+          downloadBlob(pngBlobs[0].blob, `${baseName}.png`);
+        } else {
+          progressLabel.textContent = 'ZIPを作成中…';
+          const zip = new JSZip();
+          pngBlobs.forEach(p => zip.file(p.name, p.blob));
+          const zipBlob = await zip.generateAsync({ type: 'blob' });
+          progressLabel.textContent = '完了！ダウンロードを開始します…';
+          downloadBlob(zipBlob, `${baseName}_images.zip`);
+        }
+      } catch (err) {
+        showError('画像変換中にエラーが発生しました: ' + err.message);
+        console.error(err);
+      } finally {
+        setBusy(false);
+      }
+    });
+  </script>
+</body>
+</html>
