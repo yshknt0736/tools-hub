@@ -57,6 +57,8 @@ vm.runInContext('render()', context);
 assert(nodes.get('view').innerHTML.includes('750.0'), 'initial candidate renders');
 vm.runInContext("path = 'b'; render()", context);
 assert(nodes.get('view').innerHTML.includes('—'), 'missing IEC 62927 base renders as missing');
+assert(nodes.get('view').innerHTML.includes('<div class="flow-value">未確認</div>'),
+  'applicability status has no voltage unit');
 vm.runInContext("path = 'c'; render()", context);
 assert(nodes.get('view').innerHTML.includes('同じ仕様の代替試験電圧ではありません'),
   'comparison states that the results are not interchangeable');
