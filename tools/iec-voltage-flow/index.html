@@ -120,6 +120,13 @@ h1{font-size:clamp(1.6rem,3vw,2.2rem);letter-spacing:.025em;line-height:1.3;marg
 .series-note{font-size:.76rem;line-height:1.5;color:var(--muted);background:var(--accent-soft);border-radius:9px;padding:8px 10px;margin-top:7px;font-variant-numeric:tabular-nums}
 .series-note.warn{color:var(--warn)}
 .series-hint{font-size:.74rem;line-height:1.5;color:var(--muted);margin:6px 2px 0}
+.assessment{margin-bottom:16px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--accent-soft);font-size:.84rem;line-height:1.6}
+.assessment strong{display:block;margin-bottom:4px}
+.assessment ul{margin:5px 0 0;padding-left:1.25em}
+.assessment.caution{border-color:var(--warn);background:var(--panel)}
+.inline-check{display:flex;align-items:flex-start;gap:8px;font-size:.82rem;line-height:1.5;margin:10px 0}
+.inline-check input{width:auto;margin-top:4px}
+.input-action{font-size:.76rem;padding:5px 8px;margin-top:5px}
 .grp{letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:#8290a4;margin-top:19px;padding-top:15px}
 .ctrl{padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:18px}
 .btn{border-radius:9px;font-weight:600;padding:8px 12px;transition:background .2s,transform .2s}
@@ -183,7 +190,7 @@ th{background:#f4f7fb}
   <header class="masthead">
     <p class="eyebrow">Insulation coordination · Calculation flow</p>
     <h1>絶縁協調 電圧計算フロー</h1>
-    <p class="sub">代表過電圧から試験電圧まで、各段の式と数値を確認できます。IEC 60071の経路（定格値で標高を補正）とIEC 62927の経路（試験段階で補正）を切り替えて比較します。</p>
+    <p class="sub">絶縁協調と大気補正の計算例です。表示値は入力条件に基づく参考試算で、定格絶縁レベルやIEC 62927の規定試験電圧を自動決定するものではありません。</p>
   </header>
 
   <div class="tabs" role="tablist">
@@ -198,14 +205,23 @@ th{background:#f4f7fb}
       <div class="grp">過電圧と協調</div>
       <div class="field"><label>代表過電圧 U<sub>rp</sub> <span id="UrpUnit">[kV peak]</span><small>選択した試験波形と同じ単位で入力</small></label><input id="Urp" type="number" value="500" step="10"></div>
       <div class="field"><label>協調係数 K<sub>c</sub><small>決定論的手法なら K<sub>cd</sub> ≈ 1.0〜1.1</small></label><input id="Kc" type="number" value="1.10" step="0.01"></div>
-      <div class="field"><label>安全係数 K<sub>s</sub><small>外部 1.05／内部 1.15（原文未確認）</small></label><input id="Ks" type="number" value="1.05" step="0.01"></div>
+      <div class="field full"><label for="insulation">①の絶縁部位</label><select id="insulation"><option value="external">外部絶縁</option><option value="internal">内部絶縁</option></select></div>
+      <div class="field"><label for="Ks">安全係数 K<sub>s</sub><small>IEC 60071-2:2023の推奨値：外部1.05／内部1.15。機器規格を優先</small></label><input id="Ks" type="number" value="1.05" min="1" step="0.01"></div>
 
       <div class="grp">設置条件</div>
-      <div class="field"><label>設置標高 H [m]</label><input id="H" type="number" value="2000" step="100"></div>
-      <div class="field"><label>指数 m<small>概算用。波形・放電条件に応じて設定</small></label><input id="m" type="number" value="1.00" step="0.05"></div>
+      <div class="field"><label for="H">設置標高 H [m]</label><input id="H" type="number" value="2000" min="0" step="100"></div>
+      <div class="field"><label for="m">①の標高補正指数 m<small>雷インパルスは1。開閉インパルス等は条件に応じて確認</small></label><input id="m" type="number" value="1.00" min="0" max="1" step="0.05"></div>
       <div class="field full"><label>①の標高の基準点</label>
-        <select id="base"><option value="0">海抜0 m基準（IEC 60071-2）</option><option value="1000">1,000 m基準（機器規格・IEC 62927）</option></select></div>
-      <div class="field"><label>バルブホール設計最高温度 [℃]<small>②のみ使用</small></label><input id="tD" type="number" value="20" step="1"></div>
+        <select id="base"><option value="0">海抜0 m基準（絶縁協調の標準大気換算）</option><option value="1000">1,000 m基準（既に標準定格を満たす機器への追加補正）</option></select></div>
+
+      <div class="grp">② IEC 62927の適用条件</div>
+      <div class="field full"><label for="basis">試験対象の絶縁協調の根拠</label><select id="basis"><option value="standard">IEC 60071-1の標準定格耐電圧に基づく</option><option value="nonstandard">標準定格耐電圧に基づかない</option></select></div>
+      <label class="inline-check"><input id="correctionSpecified" type="checkbox">対象のIEC 62927試験条項で大気補正が指定されていることを確認した</label>
+      <div class="field full"><label for="testClause">対象の試験条項・仕様書の識別子<small>適用確認の記録用。空欄なら結果は参考試算</small></label><input id="testClause" type="text" placeholder="例：試験条項番号"></div>
+      <div class="field"><label for="Ubase">② 補正前の試験基準値 [kV]<small>該当試験条項または仕様書から入力</small></label><input id="Ubase" type="number" min="0" step="0.1" placeholder="未設定"></div>
+      <div class="field full"><button class="btn input-action" id="exampleBase" type="button">説明用に Ucw × Ks を入力</button></div>
+      <div class="field"><label for="tD">バルブホール設計温度 [℃]<small>現実に起こり得る最悪条件の組合せを入力</small></label><input id="tD" type="number" value="20" step="1"></div>
+      <div class="field"><label for="hD">バルブホール設計絶対湿度 [g/m³]<small>相対湿度[%]ではない</small></label><input id="hD" type="number" min="0" step="0.1" placeholder="未設定"></div>
 
       <div class="grp">① 標準値の候補系列</div>
       <div class="field full"><select id="series">
@@ -215,14 +231,19 @@ th{background:#f4f7fb}
         <option value="none">丸めない（波形・単位は入力に準拠）</option>
       </select></div>
       <div class="series-note" id="seriesNote" aria-live="polite"></div>
-      <p class="series-hint">波形を変更したら U<sub>rp</sub>・K<sub>c</sub>・m をその波形に合わせて確認してください。</p>
+      <p class="series-hint">波形を変更したら U<sub>rp</sub>・K<sub>c</sub>・m と②の U<sub>base</sub> の波形・単位を確認してください。交流は実効値、インパルスは波高値です。</p>
 
       <div class="grp">試験所の大気条件</div>
-      <div class="field"><label>試験所の標高 H<sub>L</sub> [m]<small>標高から気圧を概算</small></label><input id="HL" type="number" value="0" min="0" step="100"></div>
-      <div class="field"><label>気温 [℃]</label><input id="tL" type="number" value="20" step="1"></div>
+      <div class="field"><label for="HL">試験所の標高 H<sub>L</sub> [m]<small>実測気圧がなければ概算に使用</small></label><input id="HL" type="number" value="0" min="0" step="100"></div>
+      <div class="field"><label for="pLMeasured">試験所の実測絶対気圧 [kPa]<small>海面更正気圧は使用しない</small></label><input id="pLMeasured" type="number" min="0" step="0.1" placeholder="未設定"></div>
+      <div class="field"><label for="tL">試験所の気温 [℃]</label><input id="tL" type="number" value="20" step="1"></div>
+      <div class="field"><label for="hL">試験所の絶対湿度 [g/m³]</label><input id="hL" type="number" min="0" step="0.1" placeholder="未設定"></div>
+      <div class="field"><label for="mTest">試験補正指数 m<small>IEC 60060-1の放電条件から決定</small></label><input id="mTest" type="number" value="1" min="0" max="1" step="0.05"></div>
+      <div class="field"><label for="wTest">試験補正指数 w<small>湿度未設定なら0として気圧のみの参考試算</small></label><input id="wTest" type="number" value="0" min="0" max="1" step="0.05"></div>
     </div>
 
     <div class="card" id="main">
+      <div id="assessment" class="assessment caution" aria-live="polite"></div>
       <div class="ctrl" id="ctrl">
         <button class="btn" id="prev">← 前へ</button>
         <button class="btn pri" id="next">次へ →</button>
@@ -240,15 +261,12 @@ th{background:#f4f7fb}
   </div>
 
   <ul class="foot">
-    <li>用語の定義はIEC 60071-1:2019（3.19〜3.34）、試験所の換算はIEC 60060-1、②の標高の扱いはIEC 62927:2017/COR1:2017に基づく。</li>
-    <li>湿度補正（k<sub>2</sub>）は省略し、空気密度補正 k<sub>1</sub> = δ<sup>m</sup> のみで計算している。指数 w、および g による m の決定も省略。</li>
-    <li>②の試験基準値は、流れを示すため U<sub>cw</sub> × K<sub>s</sub> と仮定している。定格系列で丸めない。実際のIEC 62927の規定試験電圧は各試験条項による。</li>
-    <li>試験所の気圧は標高から p<sub>L</sub> = 101.3e<sup>−H<sub>L</sub>/8150</sup> kPa で概算する。実際の試験では測定した気圧を使う。</li>
-    <li>交流耐電圧は実効値、雷・開閉インパルスは波高値。候補系列はIEC 60071-1 5.6（交流）と5.7（インパルス）で分ける。同じ数値でも同じ試験電圧を意味しない。</li>
-    <li>①の系列選択は数値の切り上げのみを示す。実際の定格絶縁レベルは、設備の最高電圧 U<sub>m</sub>、絶縁部位、試験波形を踏まえて表2・表3と機器規格から選ぶ。要求波形と試験波形が違う場合は試験換算係数 K<sub>tc</sub> が必要。</li>
-    <li>大気補正は説明用に共通の指数 m と空気密度補正だけを使う。IEC 60060-1での試験条件の補正では、m と湿度補正を放電条件・波形に応じて評価する。</li>
-    <li>K<sub>s</sub> の値、K<sub>a</sub> の式（IEC 60071-2）は原文未確認。数値は考え方の確認用で、設計値ではない。</li>
-    <li>出典ノート：IEC_大気補正係数.md（4章・5章）</li>
+    <li>①の U<sub>cw</sub>、U<sub>rw</sub>、U<sub>w</sub> の区別は<a href="https://cdn.standards.iteh.ai/samples/100144/6c649e0574b44164805acdb3a39941f0/IEC-60071-1-2019.pdf">IEC 60071-1:2019（定義のプレビュー）</a>に基づく。K<sub>a</sub> の式と推奨 K<sub>s</sub> は<a href="https://studylib.net/doc/27878925/iec-60071-2-2023-en-">IEC 60071-2:2023 7.2.2・7.3.5</a>を参照。</li>
+    <li>②は<a href="https://preview.sist.si/sist-preview/21612/773a35309be54aad856779f358dfae36/IEC-62927-2017.pdf">IEC 62927:2017 4.2</a>と<a href="https://www.evs.ee/et/StandardDownload/DownloadPdf?language=EnglishLanguage&amp;productId=98647">COR1:2017</a>の条件分岐を示す。大気補正は関連する個別試験条項で指定されたときだけ適用する。</li>
+    <li>湿度係数は選択波形に応じた交流・インパルス式を使用。直流、注水、沿面放電などの個別条件はこのツールでは評価しない。m・w は手入力で、g、U<sub>50</sub>、放電経路長 L による決定や反復計算は実装していない。</li>
+    <li>①の標準値は単独の数値候補。正式な定格絶縁レベル、個別試験の規定電圧、合否判定をこのページだけで決めない。内部絶縁には標高補正を適用しない。</li>
+    <li>試験所の実測絶対気圧が空欄なら p<sub>L</sub> = 101.3e<sup>−H<sub>L</sub>/8150</sup> kPa で概算。相対湿度[%]や海面更正気圧はそのまま入力しない。</li>
+    <li>試験条件の計算は<a href="https://cdn.standards.iteh.ai/samples/14599/5b8e92914b8b41c1a2d22e6ea9fbabb3/IEC-60060-1-2010.pdf">IEC 60060-1:2010 4.3</a>の説明用モデル。<a href="https://webstore.iec.ch/en/publication/65088">2025年版</a>およびIEC 62927の2023年追補との詳細な適合は未確認。採用版を試験仕様書で確認する。</li>
   </ul>
 </div>
 
@@ -262,7 +280,7 @@ const SERIES = {
 const $ = id => document.getElementById(id);
 const f1 = v => (v==null||!isFinite(v)) ? "—" : v.toFixed(1);
 const f3 = v => (v==null||!isFinite(v)) ? "—" : v.toFixed(3);
-let path = "a", step = 0, timer = null;
+let path = "a", step = 0, timer = null, baseExample = false;
 
 function pick(v, key, unit){
   const s = SERIES[key];
@@ -278,34 +296,54 @@ function pick(v, key, unit){
 
 function compute(){
   const g = id => parseFloat($(id).value);
+  const optional = id => $(id).value.trim()==="" ? NaN : g(id);
   const Urp=g("Urp"), Kc=g("Kc"), Ks=g("Ks"), H=g("H"), m=g("m"), base=+$("base").value,
-        tD=g("tD"), HL=g("HL"), tL=g("tL"), key=$("series").value;
+        insulation=$("insulation").value, basis=$("basis").value,
+        tD=g("tD"), hD=optional("hD"), HL=g("HL"), tL=g("tL"), hL=optional("hL"),
+        pLMeasured=optional("pLMeasured"), mTest=g("mTest"), wTest=g("wTest"),
+        Ubase=optional("Ubase"), correctionSpecified=$("correctionSpecified").checked,
+        clauseKnown=$("testClause").value.trim().length>0, key=$("series").value;
   const unit = key==="ac" ? "kV rms" : key==="none" ? "kV" : "kV peak";
+  const invalid = !(Urp>0 && Kc>0 && Ks>=1 && H>=0 && HL>=0 && m>=0 && m<=1 &&
+    mTest>=0 && mTest<=1 && wTest>=0 && wTest<=1 && tD>-273 && tL>-273) ||
+    (Number.isFinite(pLMeasured) && pLMeasured<=0) ||
+    (Number.isFinite(Ubase) && Ubase<=0) ||
+    (Number.isFinite(hD) && hD<=0) || (Number.isFinite(hL) && hL<=0);
   const Ucw = Kc*Urp;
-  const Heff = base===0 ? H : Math.max(H-1000,0);
-  const Ka = Math.exp(m*Heff/8150);
+  const Heff = insulation==="internal" ? 0 : base===0 ? H : Math.max(H-1000,0);
+  const Ka = invalid ? NaN : Math.exp(m*Heff/8150);
   const UcwKa = Ucw*Ka;
   const Urw = UcwKa*Ks;
   const Uw = pick(Urw,key,unit);
-  const pL = 101.3*Math.exp(-HL/8150);
-  const dL = Math.exp(-HL/8150)*(293/(273+tL));
-  const KL = Math.pow(dL,m);
+  const pL = Number.isFinite(pLMeasured) ? pLMeasured : 101.3*Math.exp(-HL/8150);
+  const dL = (pL/101.3)*(293/(273+tL));
+  const humidityK = (h,delta) => {
+    if(wTest===0) return 1;
+    if(!Number.isFinite(h) || !(delta>0) || key==="none") return NaN;
+    const x=h/delta;
+    if(x<=1 || x>=(key==="ac"?15:20)) return NaN;
+    return 1+(key==="ac"?0.012:0.010)*(x-11);
+  };
+  const kL=humidityK(hL,dL), KL=invalid ? NaN : Math.pow(dL,mTest)*Math.pow(kL,wTest);
   const UtA = KL*Uw.v;
-  // IEC 62927 path
   const Ureq = Ucw*Ks;
-  const Us = {v:Ureq, note:"説明用の仮定値（系列の丸めなし）"};
-  const pr = H<=1000 ? 1 : Math.exp(-(H-1000)/8150);
+  const Us = {v:Ubase, note:baseExample ? "Ucw × Ks から作った説明用の仮定値" : "入力された基準値（試験条項との照合が必要）"};
+  const pr = basis==="standard" ? Math.exp(-Math.max(H-1000,0)/8150) : Math.exp(-H/8150);
   const dS = pr*(293/(273+tD));
-  const KS = Math.pow(dS,m);
+  const kS=humidityK(hD,dS), KS=invalid ? NaN : Math.pow(dS,mTest)*Math.pow(kS,wTest);
   const UtB = Us.v*KL/KS;
-  // unrounded equivalents
-  const Ka1000 = Math.exp(m*Math.max(H-1000,0)/8150);
-  const eqA = Ureq*Ka1000*KL, eqB = Ureq*KL/KS;
-  return {Urp,Kc,Ks,H,m,base,tD,HL,pL,tL,key,unit,Ucw,Heff,Ka,UcwKa,Urw,Uw,dL,KL,UtA,Ureq,Us,pr,dS,KS,UtB,Ka1000,eqA,eqB};
+  const readyA = Number.isFinite(UtA) && Number.isFinite(pLMeasured) &&
+    Number.isFinite(hL) && wTest>0 && key!=="none";
+  const readyB = Number.isFinite(UtB) && readyA && correctionSpecified && clauseKnown &&
+    !baseExample && Number.isFinite(hD);
+  return {Urp,Kc,Ks,H,m,base,insulation,basis,tD,hD,HL,pL,pLMeasured,tL,hL,mTest,wTest,
+    Ubase,correctionSpecified,clauseKnown,key,unit,invalid,Ucw,Heff,Ka,UcwKa,Urw,Uw,
+    dL,kL,KL,UtA,Ureq,Us,pr,dS,kS,KS,UtB,readyA,readyB};
 }
 
 function stepsA(c){
-  const hTxt = c.base===0 ? `H = ${c.H} m（海抜0 m基準）` : `H − 1000 = ${c.Heff} m（1,000 m基準）`;
+  const hTxt = c.insulation==="internal" ? "内部絶縁なので標高補正は適用しない" :
+    c.base===0 ? `H = ${c.H} m（海抜0 m基準）` : `H − 1000 = ${c.Heff} m（既存標準機器への追加補正）`;
   return [
     {nm:"代表過電圧",sym:"U<sub>rp</sub>",v:c.Urp,cls:"site",arrow:null,
      h:"出発点：代表過電圧",tag:"site",
@@ -319,7 +357,7 @@ function stepsA(c){
      h:"標高補正：設置条件 → 標準大気",tag:"std",
      fm:`H<sub>eff</sub> = ${c.Heff} m　K<sub>a</sub> = e<sup>m·H<sub>eff</sub>/8150</sup> = e<sup>${c.m.toFixed(2)}×${c.Heff}/8150</sup> = <b>${f3(c.Ka)}</b>`,
      detail:`U<sub>cw</sub>·K<sub>a</sub> = ${f1(c.Ucw)} × ${f3(c.Ka)} = <b>${f1(c.UcwKa)} ${c.unit}</b>`,
-     tx:`${hTxt}。高地は空気が薄く絶縁が弱いので、標準大気で同じ実力を示すには高い電圧で確かめる必要がある。K<sub>a</sub> は1以上で、IEC 60060-1の K<sub>t</sub>（高地で1未満）とは<b>逆向き</b>。外部絶縁にのみ適用する。`,ref:"IEC 60071-1 3.29・3.30／IEC 60071-2"},
+     tx:`${hTxt}。K<sub>a</sub> は外部絶縁にのみ適用する。海抜0 m基準は協調耐電圧から標準大気への換算、1,000 m基準は標準定格を満たす既存機器への追加補正として使い分ける。`,ref:"IEC 60071-1 3.29・3.30／IEC 60071-2:2023 7.2.2・附属書H"},
     {nm:"要求耐電圧",sym:"U<sub>rw</sub>",v:c.Urw,cls:"std",arrow:`× K<sub>s</sub> = ${c.Ks.toFixed(2)}`,
      h:"要求耐電圧：試験で耐えるべき値",tag:"std",
      fm:`U<sub>rw</sub> = U<sub>cw</sub> × K<sub>a</sub> × K<sub>s</sub> = ${f1(c.Ucw)} × ${f3(c.Ka)} × ${c.Ks.toFixed(2)} = <b>${f1(c.Urw)} ${c.unit}</b>`,
@@ -329,42 +367,45 @@ function stepsA(c){
      h:"標準値の候補を確認",tag:"std",
      fm:`U<sub>rw</sub> = ${f1(c.Urw)} ${c.unit} → ${Number.isFinite(c.Uw.v)?`${c.key==="none"?"丸めなし":"候補系列で切り上げ"} → <b>${f1(c.Uw.v)} ${c.unit}</b>`:"<b>この系列では選択不可</b>"}`,
      detail:`${c.Uw.note}${Number.isFinite(c.Uw.v)&&c.key!=="none"?`。要求値との差は +${f1(c.Uw.v-c.Urw)} ${c.unit}`:""}`,
-     tx:`${Number.isFinite(c.Uw.v)?"ここでは選択した数値系列の中で、要求耐電圧以上の最小候補を示す。":"選択中の系列はこの要求値に適用できないため、試験電圧は計算しない。系列と要求値を確認する。"}正式な定格絶縁レベルを決めるには、設備の最高電圧 U<sub>m</sub> と絶縁部位に対応する組合せを規格表・機器規格で確認する。`,ref:"IEC 60071-1 5.5・5.7・表2／表3（候補の表示）"},
-    {nm:"試験電圧",sym:"U",v:c.UtA,cls:"lab",arrow:`× K<sub>t</sub> = ${f3(c.KL)}`,
-     h:"試験所で実際に印加する電圧",tag:"lab",
-     fm:`p<sub>L</sub> = 101.3e<sup>−${c.HL}/8150</sup> = ${f1(c.pL)} kPa　δ<sub>L</sub> = (${f1(c.pL)}/101.3) × 293/(273+${c.tL}) = ${f3(c.dL)}`,
-     detail:`K<sub>t</sub> = δ<sub>L</sub><sup>m</sup> = ${f3(c.dL)}<sup>${c.m.toFixed(2)}</sup> = ${f3(c.KL)}　U = ${f3(c.KL)} × ${f1(c.Uw.v)} = <b>${f1(c.UtA)} ${c.unit}</b>`,
-     tx:"前段の候補値を、試験所の標高から概算した気圧と入力した気温で換算する参考計算。実際の試験では確定した定格値と測定気圧を用いる。",ref:"IEC 60060-1 4.3（気圧は標高から概算）"}
+     tx:`${Number.isFinite(c.Uw.v)?"選択した数値系列の最小候補であり、確定した定格耐電圧ではない。":"選択中の系列では候補を選べない。"}設備の最高電圧 U<sub>m</sub>、絶縁部位、試験波形に対応する表2・表3の組合せと機器規格を確認する。要求波形と試験波形が違う場合は K<sub>tc</sub> が必要。`,ref:"IEC 60071-1:2019 表2・表3"},
+    {nm:"試験電圧の参考換算",sym:"U<sub>参考</sub>",v:c.UtA,cls:"lab",arrow:`× K<sub>t</sub> = ${f3(c.KL)}`,
+     h:"候補値を試験所条件へ換算した参考値",tag:"lab",
+     fm:`p<sub>L</sub> = ${c.pLMeasured>0?"実測値":"標高から概算"} = ${f1(c.pL)} kPa　δ<sub>L</sub> = (${f1(c.pL)}/101.3) × 293/(273+${c.tL}) = ${f3(c.dL)}`,
+     detail:`K<sub>t</sub> = δ<sub>L</sub><sup>${c.mTest.toFixed(2)}</sup> × k<sup>${c.wTest.toFixed(2)}</sup> = ${f3(c.KL)}　U<sub>参考</sub> = ${f3(c.KL)} × ${f1(c.Uw.v)} = <b>${f1(c.UtA)} ${c.unit}</b>`,
+     tx:"入力した試験補正指数と大気条件による参考換算。湿度を未設定にして w=0 とした場合は空気密度のみの概算。実試験には確定した定格値、測定した大気条件、放電条件に応じた m・w を使用する。",ref:"IEC 60060-1 4.3"}
   ];
 }
 
 function stepsB(c){
-  const altTxt = c.H<=1000 ? "H ≤ 1,000 m なので気圧の補正なし（標準気圧を使う）" : `H > 1,000 m なので基準気圧を1,000 m相当に置き換え：p/p<sub>1000</sub> = e<sup>−(${c.H}−1000)/8150</sup> = ${f3(c.pr)}`;
+  const standard=c.basis==="standard";
+  const pressureText=standard
+    ? `標準定格に基づく場合：H ≤ 1,000 m では標高補正なし。H > 1,000 m では p/p<sub>1000</sub> = e<sup>−max(H−1000,0)/8150</sup> = ${f3(c.pr)}`
+    : `標準定格に基づかない場合：海抜0 m基準。p/p<sub>0</sub> = e<sup>−H/8150</sup> = ${f3(c.pr)}`;
   return [
     {nm:"代表過電圧",sym:"U<sub>rp</sub>",v:c.Urp,cls:"site",arrow:null,
      h:"出発点：代表過電圧",tag:"site",fm:`U<sub>rp</sub> = ${f1(c.Urp)} ${c.unit}`,
-     tx:"①と同じ出発点。",ref:"IEC 60071-1 3.19"},
+     tx:"①との関係を示す参考値。IEC 62927の試験基準値はこの値から自動的には決まらない。",ref:"IEC 60071-1:2019 3.19"},
     {nm:"協調耐電圧",sym:"U<sub>cw</sub>",v:c.Ucw,cls:"site",arrow:`× K<sub>c</sub> = ${c.Kc.toFixed(2)}`,
      h:"協調耐電圧",tag:"site",fm:`U<sub>cw</sub> = ${c.Kc.toFixed(2)} × ${f1(c.Urp)} = <b>${f1(c.Ucw)} ${c.unit}</b>`,
-     tx:"①と同じ。",ref:"IEC 60071-1 3.25"},
-    {nm:"標高補正なし",sym:"U<sub>cw</sub>·K<sub>s</sub>",v:c.Ureq,cls:"std",arrow:`× K<sub>s</sub> = ${c.Ks.toFixed(2)}（K<sub>a</sub> は掛けない）`,
-     h:"ここが①との違い：定格の段階では標高を入れない",tag:"std",
-     fm:`U<sub>cw</sub> × K<sub>s</sub> = ${f1(c.Ucw)} × ${c.Ks.toFixed(2)} = <b>${f1(c.Ureq)} ${c.unit}</b>`,
-     tx:"標準定格耐電圧に基づく場合、定格値は1,000 m以下を前提とした標準値のまま。標高と設計温湿度は、次の試験の段階でまとめて補正する。<br><span class='warn'>①の K<sub>a</sub> とここでの補正を両方掛けると二重補正になる。</span>",ref:"IEC 62927 4.2（COR1:2017）"},
-    {nm:"試験の基準値（仮定）",sym:"U<sub>base</sub>",v:c.Us.v,cls:"std",arrow:"同じ値を引き継ぐ（丸めなし）",
-     h:"試験の基準値：説明用の仮定",tag:"std",
-     fm:`U<sub>base</sub> = U<sub>cw</sub> × K<sub>s</sub> = ${f1(c.Ucw)} × ${c.Ks.toFixed(2)} = <b>${f1(c.Us.v)} ${c.unit}</b>`,
-     tx:"ここでは計算経路を示すため、前段の値をそのまま基準値と仮定する。IEC 62927の実際の規定試験電圧は各試験条項で決まり、定格耐電圧の系列をこの段に機械的に適用しない。",ref:"IEC 62927 各試験条項（説明用の仮定）"},
+     tx:"この値とIEC 62927の個別試験条項の基準値を混同しない。",ref:"IEC 60071-1:2019 3.25"},
+    {nm:"試験条項の確認",sym:"適用条件",v:c.Us.v,cls:"std",arrow:"個別試験条項を確認",
+     h:"IEC 62927の適用条件",tag:"std",
+     fm:`大気補正の指定：<b>${c.correctionSpecified?"確認済み":"未確認"}</b>　試験条項の記録：<b>${c.clauseKnown?"入力済み":"未入力"}</b>`,
+     tx:"IEC 62927 4.2は、該当する試験条項で大気補正が指定された場合に適用する。対象部分がIEC 60071-1の標準定格に基づくかも確認する。",ref:"IEC 62927:2017 4.2・COR1:2017"},
+    {nm:"試験の基準値",sym:"U<sub>base</sub>",v:c.Us.v,cls:"std",arrow:"試験条項・仕様書から入力",
+     h:"補正前の規定値を入力",tag:"std",
+     fm:`U<sub>base</sub> = <b>${f1(c.Us.v)} ${c.unit}</b>（${c.Us.note}）`,
+     tx:"実際の規定試験電圧は各試験条項・仕様書で決まる。説明用ボタンで作る Ucw × Ks は規定値ではない。既に標高補正を含む値を入力すると二重補正になる。",ref:"IEC 62927:2017 各試験条項"},
     {nm:"設置条件係数",sym:"U<sub>base</sub>/K<sub>site</sub>",v:c.Us.v/c.KS,cls:"std",arrow:`÷ K<sub>site</sub> = ${f3(c.KS)}`,
-     h:"設置条件の補正：標高（1,000 m基準）＋設計最高温度",tag:"std",
-     fm:`δ<sub>site</sub> = ${f3(c.pr)} × 293/(273+${c.tD}) = ${f3(c.dS)}　K<sub>site</sub> = δ<sup>m</sup> = <b>${f3(c.KS)}</b>`,
-     detail:`p/p<sub>1000</sub> = ${c.H<=1000?"1.000":`e<sup>−(${c.H}−1000)/8150</sup> = ${f3(c.pr)}`}　U<sub>base</sub>/K<sub>site</sub> = ${f1(c.Us.v)} / ${f3(c.KS)} = <b>${f1(c.Us.v/c.KS)} ${c.unit}</b>`,
-     tx:`${altTxt}。温度はバルブホールの設計最高空気温度を使う（湿度は本ツールでは省略）。①と違い、温度の影響も入る。`,ref:"IEC 62927 4.2"},
-    {nm:"試験電圧",sym:"U",v:c.UtB,cls:"lab",arrow:`× K<sub>t</sub> = ${f3(c.KL)}`,
-     h:"試験所で実際に印加する電圧",tag:"lab",
-     fm:`U = U<sub>base</sub> × K<sub>t,試験所</sub> / K<sub>site</sub> = ${f1(c.Us.v)} × ${f3(c.KL)} / ${f3(c.KS)} = <b>${f1(c.UtB)} ${c.unit}</b>`,
-     detail:`p<sub>L</sub> = 101.3e<sup>−${c.HL}/8150</sup> = ${f1(c.pL)} kPa　δ<sub>L</sub> = (${f1(c.pL)}/101.3) × 293/(273+${c.tL}) = ${f3(c.dL)}　K<sub>t,試験所</sub> = ${f3(c.dL)}<sup>${c.m.toFixed(2)}</sup> = ${f3(c.KL)}`,
-     tx:"試験所の標高と気温から換算した係数を用いる。設置条件の絶縁強度が低いほど、同じ性能を確認する試験電圧は高くなる。実試験では測定気圧を使用する。",ref:"IEC 60060-1 4.3／ノート5.3節"}
+     h:"設置条件の大気補正",tag:"std",
+     fm:`δ<sub>site</sub> = ${f3(c.pr)} × 293/(273+${c.tD}) = ${f3(c.dS)}　K<sub>site</sub> = δ<sup>${c.mTest.toFixed(2)}</sup> k<sup>${c.wTest.toFixed(2)}</sup> = <b>${f3(c.KS)}</b>`,
+     detail:`U<sub>base</sub>/K<sub>site</sub> = ${f1(c.Us.v)} / ${f3(c.KS)} = <b>${f1(c.Us.v/c.KS)} ${c.unit}</b>`,
+     tx:`${pressureText}。設計温度と絶対湿度は、現実に起こり得る最悪条件の組合せを使用する。m・w は放電条件から決める。`,ref:"IEC 62927:2017 4.2／IEC 60060-1 4.3"},
+    {nm:"試験電圧の参考換算",sym:"U<sub>参考</sub>",v:c.UtB,cls:"lab",arrow:`× K<sub>t,試験所</sub> = ${f3(c.KL)}`,
+     h:"試験所条件へ換算した参考値",tag:"lab",
+     fm:`U<sub>参考</sub> = U<sub>base</sub> × K<sub>t,試験所</sub> / K<sub>site</sub> = ${f1(c.Us.v)} × ${f3(c.KL)} / ${f3(c.KS)} = <b>${f1(c.UtB)} ${c.unit}</b>`,
+     detail:`p<sub>L</sub> = ${c.pLMeasured>0?"実測":"標高から概算"} ${f1(c.pL)} kPa　δ<sub>L</sub> = ${f3(c.dL)}　K<sub>t,試験所</sub> = δ<sup>${c.mTest.toFixed(2)}</sup> k<sup>${c.wTest.toFixed(2)}</sup> = ${f3(c.KL)}`,
+     tx:"同一の説明用基準で設置条件と試験所条件を換算した値。IEC 62927の規定式や合否判定値を直接示すものではない。実試験では対象条項、測定大気条件、湿度、m・w を確認する。",ref:"IEC 60060-1 4.3／IEC 62927:2017 4.2"}
   ];
 }
 
@@ -396,50 +437,71 @@ function renderLadder(steps,unit){
 }
 
 function renderCmp(c){
-  const max = Math.max(...[c.UtA,c.UtB,c.eqA,c.eqB,c.Ucw].filter(Number.isFinite))*1.08 || 1;
+  const max = Math.max(...[c.UtA,c.UtB,c.Ucw].filter(Number.isFinite))*1.08 || 1;
   const bar=(lbl,v,cls)=>`<div class="cmpbar"><div class="nm" style="font-size:.84rem">${lbl}</div>
-    <div class="bar"><div class="fill ${cls}" data-w="${isFinite(v)?v/max*100:0}"></div></div><div class="val">${f1(v)}<small>${c.unit}</small></div></div>`;
-  const same = Math.abs(c.eqA-c.eqB) < 0.05;
-  const tNote = c.tD!==20 ? `設計最高温度 ${c.tD} ℃ の影響で②が${c.eqB>c.eqA?"高く":"低く"}なる（①は気圧のみで補正するため）。` : "";
-  const baseNote = c.base===0 && c.H>1000 ? "①を海抜0 m基準にしているため、①の最終値は1,000 m基準より高い。" : "";
-  const roundingNote = !Number.isFinite(c.Uw.v) ? "①は選択中の系列の適用範囲外で、試験電圧を算出できない。" :
-    c.key==="none" ? "①は系列で丸めていない。" : "①だけを候補系列へ切り上げている。";
-  const differenceNote = `${baseNote ? "①と②は標高の基準点が異なる。" : ""}${roundingNote}`;
+    <div class="bar"><div class="fill ${cls}" data-w="${Number.isFinite(v)?v/max*100:0}"></div></div><div class="val">${f1(v)}<small>${c.unit}</small></div></div>`;
   return `<div class="cmp fade">
-    <div class="flow-heading"><div><div class="flow-kicker">Side by side</div><h2>2つの計算経路を比較</h2></div></div>
-    <div class="cmp-section-title">最終的な試験電圧</div>
-    ${bar("① IEC 60071の経路",c.UtA,"lab")}
-    ${bar("② IEC 62927の経路",c.UtB,"lab")}
-    <div class="cmp-section-title">系列で丸める前の等価値 · 1,000 m基準</div>
-    ${bar("① U<sub>cw</sub>K<sub>s</sub>K<sub>a,1000</sub>K<sub>t</sub>",c.eqA,"neu")}
-    ${bar("② U<sub>cw</sub>K<sub>s</sub>K<sub>t</sub>/K<sub>site</sub>",c.eqB,"neu")}
+    <div class="flow-heading"><div><div class="flow-kicker">Side by side</div><h2>参考試算の比較</h2></div></div>
+    <div class="verdict"><b>①と②は同じ仕様の代替試験電圧ではありません。</b>①は数値系列から選んだ定格候補、②は入力した個別試験の基準値からの大気換算です。基準値、標高基準、温湿度、適用条項が異なるため、数値の大小や一致だけで妥当性を判定できません。</div>
+    <div class="cmp-section-title">計算された参考値</div>
+    ${bar("① 定格候補の換算",c.UtA,"lab")}
+    ${bar("② 個別試験の換算",c.UtB,"lab")}
     <div class="cmp-formulas">
-      <div>① ${f1(c.Ureq)} × ${f3(c.Ka1000)} × ${f3(c.KL)} = <b>${f1(c.eqA)} ${c.unit}</b></div>
-      <div>② ${f1(c.Ureq)} × ${f3(c.KL)} / ${f3(c.KS)} = <b>${f1(c.eqB)} ${c.unit}</b></div>
-      <div>最終値：① ${c.key==="none"?"丸めない値":"候補系列へ切り上げた値"} ${f1(c.Uw.v)} × ${f3(c.KL)} = <b>${f1(c.UtA)} ${c.unit}</b> ／ ② 丸めない仮定値 ${f1(c.Us.v)} × ${f3(c.KL)} / ${f3(c.KS)} = <b>${f1(c.UtB)} ${c.unit}</b></div>
+      <div>① ${f1(c.Uw.v)} × ${f3(c.KL)} = <b>${f1(c.UtA)} ${c.unit}</b>（定格は未確定）</div>
+      <div>② ${f1(c.Us.v)} × ${f3(c.KL)} / ${f3(c.KS)} = <b>${f1(c.UtB)} ${c.unit}</b>（${c.Us.note}）</div>
     </div>
-    <div class="verdict">${same
-      ? "丸め前の値は一致する。2つの経路は、標高補正を<b>定格値の選定</b>に入れるか<b>試験の段階</b>に入れるかの違いで、同じ換算結果になる。"
-      : "丸め前の値が一致しない。" + tNote}
-      ${differenceNote}</div>
     <table>
       <tr><th>項目</th><th>① IEC 60071</th><th>② IEC 62927</th></tr>
-      <tr><td>標高を入れる段階</td><td>要求耐電圧（定格値の選定）</td><td>試験電圧（試験の段階）</td></tr>
-      <tr><td>標高の基準点</td><td>${c.base===0?"海抜0 m":"1,000 m"}</td><td>1,000 m</td></tr>
-      <tr><td>温度・湿度</td><td>通常は考慮しない（3.29 注記2）</td><td>設計最高温度を反映（湿度は省略）</td></tr>
-      <tr><td>補正前の基準値</td><td class="n">候補 ${f1(c.Uw.v)} ${c.unit}</td><td class="n">仮定値 ${f1(c.Us.v)} ${c.unit}</td></tr>
-      <tr><td>試験電圧</td><td class="n">${f1(c.UtA)} ${c.unit}</td><td class="n">${f1(c.UtB)} ${c.unit}</td></tr>
+      <tr><td>絶縁協調の基準</td><td>${c.insulation==="external"?"外部":"内部"}絶縁の協調耐電圧</td><td>${c.basis==="standard"?"標準定格耐電圧に基づく":"標準定格耐電圧に基づかない"}</td></tr>
+      <tr><td>標高の基準点</td><td>${c.insulation==="internal"?"標高補正なし":c.base===0?"海抜0 m":"1,000 m"}</td><td>${c.basis==="standard"?"1,000 m超のみ":"海抜0 m"}</td></tr>
+      <tr><td>補正前の値</td><td class="n">定格候補 ${f1(c.Uw.v)} ${c.unit}</td><td class="n">試験基準値 ${f1(c.Us.v)} ${c.unit}</td></tr>
+      <tr><td>試験所換算</td><td class="n">${f1(c.UtA)} ${c.unit}</td><td class="n">${f1(c.UtB)} ${c.unit}</td></tr>
     </table>
-    <div class="warn">両方の補正を重ねて適用しないこと（二重補正）。</div>
+    <div class="warn">基準値に既に含まれる標高補正を再度掛けないでください。</div>
   </div>`;
+}
+
+function renderAssessment(c){
+  const points=[];
+  const showA=path!=="b", showB=path!=="a";
+  if(c.invalid) points.push("正の電圧・係数・絶対気圧、0～1の指数、−273 ℃を超える温度など、入力値を確認してください。");
+  if(showA){
+    points.push("①の丸め結果は数値系列の候補です。最高電圧 Um、絶縁部位、波形、表2・表3、機器規格を確認して定格値を決めてください。異なる波形へ換算する場合は Ktc も必要です。");
+    const recommended=c.insulation==="external"?1.05:1.15;
+    if(Math.abs(c.Ks-recommended)>0.001) points.push(`①の安全係数は${c.insulation==="external"?"外部":"内部"}絶縁のIEC 60071-2推奨値 ${recommended.toFixed(2)} と異なります。機器規格と採用値を確認してください。`);
+    if(c.insulation==="internal") points.push("①は内部絶縁を選択中のため、標高補正 Ka を適用していません。");
+  }
+  if(showB){
+    if(!c.correctionSpecified) points.push("②は対象の試験条項で大気補正が指定されているか未確認です。IEC 62927 4.2の適用を確定できません。");
+    if(!c.clauseKnown) points.push("②の対象試験条項・仕様書の識別子が未入力です。");
+    if(!Number.isFinite(c.Ubase)) points.push("②の補正前の規定試験電圧が未入力のため、試験電圧は算出できません。");
+    if(baseExample) points.push("②の基準値は Ucw × Ks から作った説明用の仮定値です。IEC 62927の規定試験電圧ではありません。");
+    if(c.basis==="standard") points.push("②の1,000 m基準は、試験対象の絶縁協調がIEC 60071-1の標準定格耐電圧に基づく場合だけに適用します。");
+    else points.push("②は標準定格耐電圧に基づかないため、海抜0 mの標準気圧を基準に計算しています。");
+    if(!Number.isFinite(c.hD)) points.push("②のバルブホール設計最低絶対湿度が未入力です。設計温度との現実的な最悪組合せも確認してください。");
+  }
+  if(!Number.isFinite(c.pLMeasured)) points.push("試験所の絶対気圧は標高からの概算です。実試験では現地測定値を入力してください。");
+  if(c.wTest===0 || !Number.isFinite(c.hL) || (showB&&!Number.isFinite(c.hD))) points.push("湿度補正が揃っていないため、表示可能な数値は空気密度のみの参考試算です。IEC 60060-1に従い絶対湿度と放電条件から m・w を決めてください。");
+  if(c.key==="none" && c.wTest>0) points.push("波形が未指定のため湿度係数 k を選べません。交流・雷・開閉インパルスから選択してください。");
+  if(Number.isFinite(c.kL)===false && c.wTest>0 && Number.isFinite(c.hL)) points.push("試験所の h/δ が選択波形の湿度式の適用範囲外です。");
+  if(showB && Number.isFinite(c.kS)===false && c.wTest>0 && Number.isFinite(c.hD)) points.push("設置条件の h/δ が選択波形の湿度式の適用範囲外です。");
+  const k1L=Math.pow(c.dL,c.mTest), k1S=Math.pow(c.dS,c.mTest);
+  if((showA||showB) && Number.isFinite(k1L) && (k1L<=0.8||k1L>=1.05)) points.push(`試験所の空気密度補正 k1=${f3(k1L)} はIEC 60060-1:2010の信頼範囲 0.8<k1<1.05 の外です。`);
+  if(showB && Number.isFinite(k1S) && (k1S<=0.8||k1S>=1.05)) points.push(`設置条件の空気密度補正 k1=${f3(k1S)} はIEC 60060-1:2010の信頼範囲 0.8<k1<1.05 の外です。`);
+  const title=c.invalid ? "入力値を修正してください" :
+    path==="a" ? "① 定格候補の参考試算" : path==="b" ? "② 個別試験条件の参考試算" : "異なる基準の参考試算を並べています";
+  const box=$("assessment");
+  box.classList.toggle("caution",points.length>0);
+  box.innerHTML=`<strong>${title}</strong><ul>${points.map(p=>`<li>${p}</li>`).join("")}</ul>`;
 }
 
 function render(){
   const c = compute();
+  renderAssessment(c);
   $("UrpUnit").textContent = `[${c.unit}]`;
   const seriesNote = $("seriesNote");
   seriesNote.textContent = Number.isFinite(c.Uw.v)
-    ? `要求耐電圧 ${f1(c.Urw)} ${c.unit} → ${f1(c.Uw.v)} ${c.unit}（${c.Uw.note}）`
+    ? `定格候補：要求耐電圧 ${f1(c.Urw)} ${c.unit} → ${f1(c.Uw.v)} ${c.unit}（${c.Uw.note}）`
     : `要求耐電圧 ${f1(c.Urw)} ${c.unit}：${c.Uw.note}`;
   seriesNote.classList.toggle("warn",!Number.isFinite(c.Uw.v));
   const view = $("view");
@@ -478,6 +540,15 @@ $("play").onclick=()=>{
   timer=setInterval(()=>{ if(step>=n-1){stop();return} go(1) },1800);
 };
 $("dots").onclick=e=>{ if(e.target.dataset.i!=null){stop();step=+e.target.dataset.i;render()} };
+$("exampleBase").onclick=()=>{
+  const c=compute();
+  if(!Number.isFinite(c.Ureq)) return;
+  $("Ubase").value=c.Ureq.toFixed(3);
+  baseExample=true;
+  render();
+};
+$("Ubase").addEventListener("input",()=>{baseExample=false});
+$("insulation").addEventListener("change",()=>{$("Ks").value=$("insulation").value==="internal"?"1.15":"1.05";render()});
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
   stop();
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===t));
