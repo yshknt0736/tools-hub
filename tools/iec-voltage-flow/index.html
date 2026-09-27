@@ -388,7 +388,7 @@ function stepsB(c){
     {nm:"協調耐電圧",sym:"U<sub>cw</sub>",v:c.Ucw,cls:"site",arrow:`× K<sub>c</sub> = ${c.Kc.toFixed(2)}`,
      h:"協調耐電圧",tag:"site",fm:`U<sub>cw</sub> = ${c.Kc.toFixed(2)} × ${f1(c.Urp)} = <b>${f1(c.Ucw)} ${c.unit}</b>`,
      tx:"この値とIEC 62927の個別試験条項の基準値を混同しない。",ref:"IEC 60071-1:2019 3.25"},
-    {nm:"試験条項の確認",sym:"適用条件",v:c.Us.v,cls:"std",arrow:"個別試験条項を確認",
+    {nm:"試験条項の確認",sym:"適用条件",display:c.correctionSpecified&&c.clauseKnown?"確認済み":"未確認",cls:"std",arrow:"個別試験条項を確認",
      h:"IEC 62927の適用条件",tag:"std",
      fm:`大気補正の指定：<b>${c.correctionSpecified?"確認済み":"未確認"}</b>　試験条項の記録：<b>${c.clauseKnown?"入力済み":"未入力"}</b>`,
      tx:"IEC 62927 4.2は、該当する試験条項で大気補正が指定された場合に適用する。対象部分がIEC 60071-1の標準定格に基づくかも確認する。",ref:"IEC 62927:2017 4.2・COR1:2017"},
@@ -423,7 +423,7 @@ function renderLadder(steps,unit){
       <div class="flow-index">${String(i+1).padStart(2,"0")}</div>
       <div><div class="flow-title"><strong>${s.sym}</strong>${s.nm}</div>
         <div class="step-equation"><span class="eq-line">${s.fm}</span>${s.detail?`<span class="eq-line">${s.detail}</span>`:""}</div></div>
-      <div class="flow-value">${f1(s.v)}<small>${unit}</small></div>
+      <div class="flow-value">${s.display??f1(s.v)}${s.display?"":`<small>${unit}</small>`}</div>
     </div>`;
   });
   h += `</div>`;
