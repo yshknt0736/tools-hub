@@ -194,15 +194,18 @@
       text-align: center;
       margin-top: 0.5rem;
     }
+    #output-dpi { max-width: 100%; padding: .45rem .65rem; border: 1px solid #b0b8c8; border-radius: 8px; background: #fff; color: inherit; }
   </style>
+  <link rel="stylesheet" href="../tool-common.css">
 </head>
-<body>
+<body class="conversion-tool">
+  <a class="hub-nav" href="../../">← ToolsHub</a>
   <h1>📄 PDF → 画像</h1>
-  <p class="subtitle">PDFの各ページをPNG画像に変換（元のDPIを維持・可逆圧縮で劣化なし）</p>
+  <p class="subtitle">PDFの各ページを指定解像度で描画し、PNGで保存します。元PDF自体に単一のDPIはありません。</p>
 
-  <div id="drop-zone">
+  <div id="drop-zone" role="button" tabindex="0" aria-label="PDFファイルを選択">
     <span class="icon">📄</span>
-    <p>PDFをここにドラッグ＆ドロップ</p>
+    <p>PDFをここにドロップ、またはクリックして選択</p>
     <p class="hint">対応形式: PDF（1ファイル）</p>
     <input type="file" id="file-input" accept="application/pdf">
   </div>
@@ -214,8 +217,14 @@
       <div id="file-meta" class="file-meta"></div>
     </div>
     <div class="dpi-row">
-      <label>解像度</label>
-      <span id="dpi-info">元PDFのDPIを自動検出</span>
+      <label for="output-dpi">出力解像度</label>
+      <select id="output-dpi" aria-label="出力解像度">
+        <option value="96">96 DPI（画面確認）</option>
+        <option value="150" selected>150 DPI（標準）</option>
+        <option value="200">200 DPI</option>
+        <option value="300">300 DPI（印刷向け）</option>
+        <option value="600">600 DPI（高精細・大容量）</option>
+      </select>
     </div>
     <div id="progress-wrap">
       <progress id="progress" value="0" max="100"></progress>
@@ -227,7 +236,7 @@
   </div>
 
   <script>
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
+    if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
     const dropZone = document.getElementById('drop-zone');
@@ -235,7 +244,7 @@
     const statusEl = document.getElementById('status');
     const fileNameEl = document.getElementById('file-name');
     const fileMetaEl = document.getElementById('file-meta');
-    const dpiInfoEl = document.getElementById('dpi-info');
+    const outputDpiEl = document.getElementById('output-dpi');
     const progressWrap = document.getElementById('progress-wrap');
     const progressEl = document.getElementById('progress');
     const progressLabel = document.getElementById('progress-label');
@@ -246,10 +255,7 @@
     let pdfFile = null;
     let pdfDoc = null;
 
-    const DEFAULT_DPI = 300; // 埋め込み画像が見つからないページ(ベクター/テキストのみ)向けの既定値
-    const MIN_DPI = 72;
-    const MAX_DPI = 1200;
-    const MAX_CANVAS_PIXELS = 50_000_000; // 1ページあたりの安全上限(約200MBのRGBAバッファ相当)。超える場合はDPIを下げて確保に失敗しないようにする
+    const MAX_CANVAS_PIXELS = 20_000_000; // RGBA描画バッファ約80MB
 
     // 検出DPIで描画した場合の画素数が上限を超えるなら、上限内に収まるようDPIを下げる
     function clampDpiToSafeCanvas(dpi, pageWidthPt, pageHeightPt) {
@@ -257,41 +263,13 @@
       const pixels = (pageWidthPt * scale) * (pageHeightPt * scale);
       if (pixels <= MAX_CANVAS_PIXELS) return { dpi, clamped: false };
       const factor = Math.sqrt(MAX_CANVAS_PIXELS / pixels);
-      return { dpi: Math.max(MIN_DPI, Math.floor(dpi * factor)), clamped: true };
+      return { dpi: Math.max(1, Math.floor(dpi * factor)), clamped: true };
     }
 
-    // ページに埋め込まれた画像から元解像度(DPI)を検出する。
-    // 複数画像がある場合は最大面積のものを採用し、見つからなければ既定値にフォールバックする。
-    async function detectPageDpi(page) {
-      const opList = await page.getOperatorList();
-      const OPS = pdfjsLib.OPS;
-      const imageOps = new Set([OPS.paintImageXObject, OPS.paintJpegXObject, OPS.paintImageXObjectRepeat]);
-      const names = [];
-      for (let i = 0; i < opList.fnArray.length; i++) {
-        if (imageOps.has(opList.fnArray[i])) names.push(opList.argsArray[i][0]);
-      }
-
-      let best = null;
-      for (const name of names) {
-        const img = await new Promise(resolve => {
-          try { page.objs.get(name, resolve); } catch (e) { resolve(null); }
-        });
-        if (img && img.width && img.height) {
-          const area = img.width * img.height;
-          if (!best || area > best.area) best = { area, w: img.width, h: img.height };
-        }
-      }
-
-      if (!best) return { dpi: DEFAULT_DPI, detected: false };
-
-      const viewport = page.getViewport({ scale: 1 });
-      const dpiX = best.w / (viewport.width / 72);
-      const dpiY = best.h / (viewport.height / 72);
-      const dpi = Math.round((dpiX + dpiY) / 2);
-      return { dpi: Math.min(MAX_DPI, Math.max(MIN_DPI, dpi)), detected: true };
-    }
-
-    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('click', e => { if (e.target !== fileInput) fileInput.click(); });
+    dropZone.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+    });
 
     dropZone.addEventListener('dragover', e => {
       e.preventDefault();
@@ -313,7 +291,10 @@
     });
 
     async function setFile(file) {
+      if (!window.pdfjsLib) { dropZoneError('PDFライブラリを読み込めません。通信状態を確認してください。'); return; }
       pdfFile = file;
+      pdfDoc = null;
+      btnConvert.disabled = true;
       errorMsg.textContent = '';
       clearDropZoneError();
       fileNameEl.textContent = file.name;
@@ -327,12 +308,7 @@
         pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         fileMetaEl.textContent = `${pdfDoc.numPages} ページ`;
 
-        dpiInfoEl.textContent = '検出中...';
-        const page1 = await pdfDoc.getPage(1);
-        const { dpi, detected } = await detectPageDpi(page1);
-        dpiInfoEl.textContent = detected
-          ? `約 ${dpi} DPI（元画像から検出）`
-          : `${dpi} DPI（画像を検出できないため既定値）`;
+        btnConvert.disabled = false;
       } catch (err) {
         showError('PDFの読み込みに失敗しました: ' + err.message);
         console.error(err);
@@ -368,12 +344,13 @@
       dropZone.style.display = '';
       statusEl.style.display = 'none';
       errorMsg.textContent = '';
-      dpiInfoEl.textContent = '元PDFのDPIを自動検出';
       btnConvert.disabled = false;
     });
 
     function setBusy(busy) {
       btnConvert.disabled = busy;
+      btnReset.disabled = busy;
+      outputDpiEl.disabled = busy;
     }
 
     function safeBaseName() {
@@ -417,7 +394,7 @@
       return m > 0 ? `${m}分${s}秒` : `${s}秒`;
     }
 
-    // ── PDF → PNG（各ページの元画像から検出したDPIをそのまま維持。可逆圧縮で劣化なし） ──
+    // ── PDF → PNG（指定したDPIで描画。PNG符号化は可逆だが、PDF→ラスター化は不可逆） ──
     // 1ページずつ描画→PNG化→(必要なら)ZIPへ追加→そのページのメモリを解放、を繰り返す。
     // pdf.jsはgetPage()したページを内部キャッシュし続けるため、page.cleanup()を呼ばないと
     // ページ数の多い/高解像度なPDFでメモリが増え続け、途中でタブが落ちて処理が止まる。
@@ -429,6 +406,7 @@
 
       try {
         const numPages = pdfDoc.numPages;
+        if (numPages > 1 && !window.JSZip) throw new Error('ZIPライブラリを読み込めません。通信状態を確認してください。');
         const baseName = safeBaseName();
         const pad = String(numPages).length;
 
@@ -453,9 +431,8 @@
           try {
             const blob = await withTimeout((async () => {
               const page = await pdfDoc.getPage(i);
-              const { dpi: detectedDpi } = await detectPageDpi(page);
               const pageSizePt = page.getViewport({ scale: 1 });
-              const { dpi, clamped } = clampDpiToSafeCanvas(detectedDpi, pageSizePt.width, pageSizePt.height);
+              const { dpi, clamped } = clampDpiToSafeCanvas(Number(outputDpiEl.value), pageSizePt.width, pageSizePt.height);
               if (clamped) clampedCount++;
 
               const scale = dpi / 72; // PDFの座標単位(pt, 72dpi基準)を検出DPIへ変換

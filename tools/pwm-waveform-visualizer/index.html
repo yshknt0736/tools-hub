@@ -491,9 +491,14 @@
         grid-template-columns: 1fr;
       }
     }
+    .method-note { margin: 0; padding: 14px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .reset-controls { margin: 0 16px 16px; padding: 9px 14px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--panel); }
+    .reset-controls:hover { background: var(--soft); }
   </style>
+  <link rel="stylesheet" href="../tool-common.css">
 </head>
 <body>
+  <a class="hub-nav" href="../../">← ToolsHub</a>
   <main class="app">
     <header>
       <div>
@@ -562,12 +567,14 @@
         </div>
 
         <div class="stats">
-          <div class="stat"><strong id="switchFreq">900 Hz</strong><span>等価スイッチング周波数</span></div>
-          <div class="stat"><strong id="levels">2</strong><span>出力レベル数</span></div>
+          <div class="stat"><strong id="switchFreq">900 Hz</strong><span>概算リップル周波数</span></div>
+          <div class="stat"><strong id="levels">2</strong><span>理論上の出力レベル数</span></div>
           <div class="stat"><strong id="peakVoltage">100 V</strong><span>セル電圧</span></div>
           <div class="stat"><strong id="phaseStep">120°</strong><span>キャリア位相差</span></div>
           <div class="stat"><strong id="carrierRatio">18</strong><span>キャリア比 (fc/f1)</span></div>
         </div>
+        <p class="method-note" id="methodNote">モデル: 参照波 m·sin(2πf₁t) と三角波を比較。出力は ±Vdc の理想スイッチです。平均は中心移動平均で、実回路のフィルタ特性ではありません。</p>
+        <button class="reset-controls" id="resetControls" type="button">設定を初期値に戻す</button>
       </aside>
 
       <section class="workspace">
@@ -648,7 +655,7 @@
 
     const getParams = () => {
       const fundamental = Number(document.querySelector("input[name='fundamental']:checked").value);
-      const carrierFrequency = Math.max(1, Number(controls.carrierFrequency.value) || 1);
+      const carrierFrequency = Math.min(5000, Math.max(100, Number(controls.carrierFrequency.value) || 600));
       return {
         modulation: Number(controls.modulation.value),
         fundamental,
@@ -709,16 +716,14 @@
     const mixed = (x, p, activeMode) => activeMode === "pscpwm" ? pscPwm(x, p) : spwm(x, p);
 
     const averageSeries = (series, windowSamples) => {
-      const output = [];
-      let sum = 0;
-      const queue = [];
-      for (const value of series) {
-        queue.push(value);
-        sum += value;
-        if (queue.length > windowSamples) sum -= queue.shift();
-        output.push(sum / queue.length);
-      }
-      return output;
+      const prefix = [0];
+      for (const value of series) prefix.push(prefix[prefix.length - 1] + value);
+      const radius = Math.max(1, Math.floor(windowSamples / 2));
+      return series.map((_, index) => {
+        const start = Math.max(0, index - radius);
+        const end = Math.min(series.length, index + radius + 1);
+        return (prefix[end] - prefix[start]) / (end - start);
+      });
     };
 
     let ui = { tickSize: 11, labelSize: 13, keySize: 12, yOffset: 40, keyItemW: 128 };
@@ -871,7 +876,7 @@
     };
 
     const drawMode = (activeMode, area, title, p) => {
-      const series = collectSeries(activeMode, p, 900);
+      const series = collectSeries(activeMode, p, Math.max(900, Math.ceil(p.carrierRatio * 24)));
       const maxVoltage = p.dcVoltage;
       const cellDcVoltage = activeMode === "pscpwm" ? p.dcVoltage / p.cells : p.dcVoltage;
       const averaged = averageSeries(series.voltage, Math.max(3, Math.round(series.voltage.length * p.filter)));
@@ -1023,7 +1028,7 @@
     };
 
     const updateLabels = (p) => {
-      labels.modulation.textContent = p.modulation.toFixed(2);
+      labels.modulation.textContent = p.modulation.toFixed(2) + (p.modulation > 1 ? '（過変調）' : '');
       labels.fundamental.textContent = `${p.fundamental} Hz`;
       labels.carrierFrequency.textContent = `${Math.round(p.carrierFrequency)} Hz`;
       labels.cells.textContent = String(p.cells);
@@ -1039,6 +1044,9 @@
         ? `${Math.round(360 / p.cells)}°`
         : "0°";
       labels.carrierRatio.textContent = formatNumber(p.carrierRatio, 1);
+      document.getElementById('methodNote').textContent = isPsc
+        ? 'モデル: Nセルの各キャリアを360°/Nずらし、上下アームの電圧差を合成。各セル電圧は Vdc/N。表示値は理想スイッチの概算で、実機の損失・デッドタイムは含みません。'
+        : 'モデル: 参照波 m·sin(2πf₁t) と三角波を比較。出力は ±Vdc の理想スイッチです。平均は中心移動平均で、実回路のフィルタ特性ではありません。';
 
       if (mode === "spwm") {
         labels.title.textContent = "正弦波PWM";
@@ -1090,6 +1098,22 @@
     Object.values(controls).forEach((control) => {
       control.addEventListener("input", render);
       control.addEventListener("change", render);
+    });
+    controls.carrierFrequency.addEventListener('change', () => {
+      controls.carrierFrequency.value = String(getParams().carrierFrequency);
+      render();
+    });
+    document.getElementById('resetControls').addEventListener('click', () => {
+      controls.modulation.value = '0.80';
+      document.getElementById('fundamental60').checked = true;
+      controls.carrierFrequency.value = '600';
+      document.getElementById('cells2').checked = true;
+      controls.dcVoltage.value = '100';
+      controls.filter.value = '0.10';
+      controls.showCarriers.checked = true;
+      mode = 'spwm';
+      tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.mode === mode));
+      render();
     });
 
     window.addEventListener("resize", render);

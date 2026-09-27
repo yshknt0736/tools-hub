@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CSV 高速抽出ツール | ToolsHub</title>
+  <meta name="description" content="大きなCSV・TSVから列と行を抽出するWindowsアプリ。">
+  <style>
+    :root { color-scheme: light; font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif; color: #19312c; background: #f3f7f5; }
+    * { box-sizing: border-box; }
+    body { margin: 0; line-height: 1.7; }
+    a { color: #0b6c60; }
+    a:focus-visible, button:focus-visible { outline: 3px solid #e69440; outline-offset: 3px; }
+    main { width: min(960px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 64px; }
+    .back { display: inline-block; margin-bottom: 26px; text-decoration: none; font-weight: 700; }
+    .hero { padding: clamp(28px, 6vw, 56px); border-radius: 24px; color: #fff; background: linear-gradient(135deg, #154d43, #1c7566); box-shadow: 0 18px 38px #123a3224; }
+    .eyebrow { margin: 0 0 8px; color: #b2e6d7; font-size: .83rem; font-weight: 800; letter-spacing: .12em; }
+    h1 { margin: 0; font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.25; }
+    .lead { max-width: 60ch; font-size: 1.05rem; opacity: .94; }
+    .download { display: inline-flex; align-items: center; gap: 10px; padding: 13px 20px; margin-top: 8px; border-radius: 12px; color: #174b40; background: #fff; text-decoration: none; font-weight: 800; }
+    .download:hover { background: #e8fbf4; }
+    .small { font-size: .84rem; opacity: .82; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 24px; }
+    section.card { padding: 24px; border: 1px solid #d9e6e0; border-radius: 18px; background: #fff; box-shadow: 0 8px 22px #1c4d3d0d; }
+    h2 { margin: 0 0 10px; font-size: 1.12rem; }
+    p { margin: 8px 0; }
+    ol, ul { padding-left: 1.35rem; }
+    code { padding: .1em .3em; border-radius: 4px; background: #eaf2ee; }
+    .note { color: #53665f; font-size: .9rem; }
+    @media (max-width: 680px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="../../">← ToolsHubに戻る</a>
+    <div class="hero">
+      <p class="eyebrow">WINDOWS DESKTOP TOOL</p>
+      <h1>CSV 高速抽出ツール</h1>
+      <p class="lead">大きなCSV・TSVを1行ずつ読み、必要な列・行だけを取り出します。全体をメモリに読み込まずに処理できます。</p>
+      <a class="download" href="CSV抽出ツール.exe" download>↓ Windows版をダウンロード</a>
+      <p class="small">Python不要・Windows 10/11向け。ファイルは端末内で処理します。</p>
+    </div>
+    <div class="grid">
+      <section class="card">
+        <h2>できること</h2>
+        <ul>
+          <li>列を選び、行番号または範囲で抽出</li>
+          <li>先頭100行をプレビュー</li>
+          <li>指定列の手前で列を左右2つのCSVに分割</li>
+          <li>カンマ・タブ・セミコロンを自動判定</li>
+        </ul>
+      </section>
+      <section class="card">
+        <h2>使い方</h2>
+        <ol>
+          <li>CSVまたはTSVを開き、文字コードを確認</li>
+          <li>列を選び、必要なら行範囲を <code>1-100, 201</code> のように入力</li>
+          <li>プレビューで確認し、CSVへ書き出し</li>
+        </ol>
+        <p class="note">行番号はヘッダーを除いたデータ行で1始まりです。空欄なら全行を出力します。</p>
+      </section>
+      <section class="card">
+        <h2>データと安全性</h2>
+        <p>CSVは外部へ送信されません。ダウンロードした実行ファイルの使用前には、必要に応じて組織のセキュリティポリシーに従って確認してください。</p>
+        <p>処理中は「中止」で一時ファイルを破棄できます。元ファイルと同じ場所への上書きはできません。</p>
+      </section>
+      <section class="card">
+        <h2>ソースコード</h2>
+        <p>Python標準ライブラリのみで動作します。<a href="src/csv_extractor.py">ソースを確認</a>、または<a href="index.md">詳細な説明を読む</a>。</p>
+        <p class="note">文字コードはUTF-8・CP932・Shift-JISなどから選べます。文字化けする場合は切り替えて開き直してください。</p>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

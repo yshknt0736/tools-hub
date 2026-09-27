@@ -494,8 +494,10 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="../tool-common.css">
 </head>
 <body>
+  <a class="hub-nav" href="../../">← ToolsHub</a>
   <main class="app">
     <header>
       <div>
@@ -607,6 +609,7 @@
 
     let markdownFiles = [];
     let combinedText = "";
+    let rebuildVersion = 0;
 
     const formatBytes = (bytes) => {
       if (!bytes) return "0 KB";
@@ -716,14 +719,15 @@
         return file;
       });
 
-    const readText = (file) => new Promise((resolve) => {
+    const readText = (file) => new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => resolve("");
+      reader.onerror = () => reject(new Error(`${file.name} を読み取れませんでした`));
       reader.readAsText(file);
     });
 
     const rebuild = async () => {
+      const version = ++rebuildVersion;
       if (!markdownFiles.length) {
         combinedText = "";
         output.value = "";
@@ -741,21 +745,31 @@
       const trim = trimBlank.checked;
       const chunks = [];
 
-      for (const file of markdownFiles) {
-        let text = await readText(file);
-        if (trim) text = text.trim();
-
-        if (showPath) {
-          if (mode === "heading") {
-            chunks.push(`## ${file.relativePath}\n\n${text}`);
+      try {
+        for (const file of markdownFiles) {
+          let text = await readText(file);
+          if (version !== rebuildVersion) return;
+          if (trim) text = text.trim();
+          const path = file.relativePath.replace(/[\r\n]/g, " ");
+          if (showPath) {
+            if (mode === "heading") {
+              chunks.push(`## ${path.replace(/\s*#+\s*$/, "")}\n\n${text}`);
+            } else {
+              chunks.push(`<!-- ${path.replace(/-->/g, "--&gt;")} -->\n\n${text}`);
+            }
           } else {
-            chunks.push(`<!-- ${file.relativePath} -->\n\n${text}`);
+            chunks.push(text);
           }
-        } else {
-          chunks.push(text);
         }
+      } catch (error) {
+        if (version === rebuildVersion) {
+          downloadBtn.disabled = true;
+          setStatus(error.message, true);
+        }
+        return;
       }
 
+      if (version !== rebuildVersion) return;
       const separator = mode === "heading" ? "\n\n" : "\n\n---\n\n";
       combinedText = chunks.join(separator).replace(/\n{4,}/g, "\n\n\n") + "\n";
       output.value = combinedText;
@@ -812,7 +826,10 @@
       .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/\*([^*]+)\*/g, "<em>$1</em>")
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
+        const safe = /^(https?:\/\/|#|\.?\.?\/)/i.test(url) && !/^(?:\/\/|javascript:)/i.test(url);
+        return safe ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>` : label;
+      });
 
     const renderMarkdown = (markdown) => {
       const lines = markdown.split(/\r?\n/);
@@ -946,7 +963,7 @@
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
   </script>
 </body>

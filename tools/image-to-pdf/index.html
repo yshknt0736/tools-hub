@@ -73,6 +73,9 @@
     #file-input {
       display: none;
     }
+    #images-input { display: none; }
+    #choose-images { margin-top: 1rem; padding: .55rem 1rem; border: 1px solid #b7c4d2; border-radius: 9px; color: #294f77; background: #f7faff; cursor: pointer; }
+    #choose-images:hover { background: #e9f2ff; }
 
     #status {
       width: min(480px, 100%);
@@ -198,16 +201,20 @@
       margin-top: 0.5rem;
     }
   </style>
+  <link rel="stylesheet" href="../tool-common.css">
 </head>
-<body>
+<body class="conversion-tool">
+  <a class="hub-nav" href="../../">← ToolsHub</a>
   <h1>画像フォルダ → PDF / 圧縮</h1>
-  <p class="subtitle">フォルダをドロップして、PDF化または画像圧縮を選べます</p>
+  <p class="subtitle">画像を自然順にまとめてPDF化。JPEG圧縮ZIPも作れます（ファイルは端末内で処理）。</p>
 
-  <div id="drop-zone">
+  <div id="drop-zone" role="button" tabindex="0" aria-label="画像フォルダを選択">
     <span class="icon">🗂️</span>
-    <p>フォルダをここにドラッグ＆ドロップ</p>
-    <p class="hint">対応形式: JPG · PNG · GIF · WebP · BMP</p>
+    <p>フォルダをドロップ、またはクリックして選択</p>
+    <p class="hint">対応形式: JPG · PNG · GIF（先頭フレーム）· WebP · BMP</p>
     <input type="file" id="file-input" webkitdirectory multiple accept="image/*">
+    <button type="button" id="choose-images">画像ファイルを複数選ぶ</button>
+    <input type="file" id="images-input" multiple accept="image/jpeg,image/png,image/gif,image/webp,image/bmp">
   </div>
 
   <div id="status">
@@ -221,7 +228,7 @@
       <div class="progress-label" id="progress-label">処理中...</div>
     </div>
     <button id="btn-generate">PDFを生成してダウンロード</button>
-    <button id="btn-compress">画像を圧縮してダウンロード (ZIP)</button>
+    <button id="btn-compress">画像をZIPにまとめる（JPEGは小さくなる場合のみ再圧縮）</button>
     <button id="btn-reset">リセット</button>
     <div class="error-msg" id="error-msg"></div>
   </div>
@@ -237,6 +244,8 @@
     }
     const dropZone = document.getElementById('drop-zone');
     const fileInput = document.getElementById('file-input');
+    const imagesInput = document.getElementById('images-input');
+    const chooseImages = document.getElementById('choose-images');
     const statusEl = document.getElementById('status');
     const fileItemsEl = document.getElementById('file-items');
     const fileCountEl = document.getElementById('file-count');
@@ -251,7 +260,18 @@
     let imageFiles = [];
     let folderName = '';
 
-    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('click', e => {
+      if (e.target !== chooseImages && e.target !== fileInput && e.target !== imagesInput) fileInput.click();
+    });
+    dropZone.addEventListener('keydown', e => {
+      if (e.target === dropZone && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); fileInput.click(); }
+    });
+    chooseImages.addEventListener('click', e => { e.stopPropagation(); imagesInput.click(); });
+    imagesInput.addEventListener('change', () => {
+      folderName = '';
+      skippedCount = 0;
+      setFiles(Array.from(imagesInput.files));
+    });
 
     dropZone.addEventListener('dragover', e => {
       e.preventDefault();
@@ -273,11 +293,12 @@
         }
       }
 
+      skippedCount = 0;
       if (entries.length) {
         // ドロップされた最上位ディレクトリ名をPDF名に使う
         const dir = entries.find(en => en.isDirectory);
         folderName = dir ? dir.name : '';
-        collectFromEntries(entries);
+        collectFromEntries(entries).catch(err => dropZoneError('フォルダを読み取れません: ' + err.message));
       } else {
         // フォルダ走査が使えない環境向けのフォールバック
         folderName = '';
@@ -347,7 +368,7 @@
     }
 
     function setFiles(files) {
-      imageFiles = files.sort(naturalCompare);
+      imageFiles = files.filter(isSupportedImage).sort(naturalCompare);
       if (!imageFiles.length) {
         // ドロップゾーンを表示したままエラーを出す（statusは非表示のため）
         dropZone.style.display = '';
@@ -360,9 +381,12 @@
         return;
       }
       errorMsg.textContent = '';
-      fileItemsEl.innerHTML = imageFiles.map(f =>
-        `<div class="file-item">${f.name}</div>`
-      ).join('');
+      fileItemsEl.replaceChildren(...imageFiles.map(file => {
+        const row = document.createElement('div');
+        row.className = 'file-item';
+        row.textContent = file.webkitRelativePath || file.name;
+        return row;
+      }));
       fileCountEl.textContent = skippedCount
         ? `${imageFiles.length} 枚の画像（${skippedCount} 件を読み取り不可でスキップ）`
         : `${imageFiles.length} 枚の画像`;
@@ -391,20 +415,23 @@
     btnReset.addEventListener('click', () => {
       imageFiles = [];
       fileInput.value = '';
+      imagesInput.value = '';
       dropZone.style.display = '';
       statusEl.style.display = 'none';
       errorMsg.textContent = '';
       btnGenerate.disabled = false;
       btnCompress.disabled = false;
+      document.getElementById('dz-error')?.remove();
     });
 
-    // 圧縮設定：解像度は維持し、高品質JPEG化のみで容量を削減する
-    const JPEG_QUALITY = 0.92;  // 高品質JPEG（0.92では劣化はほぼ視認できない）
+    // JPEGのみ再エンコードする。PNG/GIF/WebP/BMPは透明度やアニメーションを保つため原本を維持。
+    const JPEG_QUALITY = 0.88;
     const PX_TO_PT = 72 / 96;   // 96dpi のピクセルを PDF のポイント(1/72inch)へ変換
 
     function setBusy(busy) {
       btnGenerate.disabled = busy;
       btnCompress.disabled = busy;
+      btnReset.disabled = busy;
     }
 
     function safeBaseName() {
@@ -419,6 +446,7 @@
       errorMsg.textContent = '';
 
       try {
+        if (!window.jspdf?.jsPDF) throw new Error('PDFライブラリを読み込めません。通信状態を確認してください。');
         const { jsPDF } = window.jspdf;
         let pdf = null;
 
@@ -440,8 +468,11 @@
           } else {
             pdf.addPage([pw, ph], orientation);
           }
-          const fmt = file.type === 'image/png' ? 'PNG' : 'JPEG';
-          pdf.addImage(dataUrl, fmt, 0, 0, pw, ph, undefined, 'FAST');
+          // jsPDFが直接扱えないGIF/WebP/BMPはcanvasでPNGに変換する。
+          const direct = /^image\/(jpeg|png)$/.test(file.type) || /\.(jpe?g|png)$/i.test(file.name);
+          const imageData = direct ? dataUrl : imageToPng(img);
+          const fmt = /^data:image\/png/i.test(imageData) ? 'PNG' : 'JPEG';
+          pdf.addImage(imageData, fmt, 0, 0, pw, ph, undefined, 'FAST');
         }
 
         progressEl.value = 100;
@@ -463,6 +494,7 @@
       errorMsg.textContent = '';
 
       try {
+        if (!window.JSZip) throw new Error('ZIPライブラリを読み込めません。通信状態を確認してください。');
         const zip = new JSZip();
         const usedNames = new Set();
 
@@ -471,18 +503,21 @@
           progressLabel.textContent = `圧縮中 ${i + 1} / ${imageFiles.length}：${file.name}`;
           progressEl.value = Math.round((i / imageFiles.length) * 100);
 
-          const rawUrl = await readAsDataURL(file);
-          const { dataUrl } = await compressImage(rawUrl);
-          const base64 = dataUrl.split(',')[1];
-
-          // 拡張子は再エンコード後の .jpg に統一。名前衝突は連番で回避
-          let name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
-          let n = 1;
-          while (usedNames.has(name)) {
-            name = file.name.replace(/\.[^.]+$/, '') + `_${n++}.jpg`;
+          let content = file;
+          let name = file.name;
+          if (/\.(jpe?g)$/i.test(file.name) || file.type === 'image/jpeg') {
+            const candidate = await compressJpeg(await readAsDataURL(file));
+            if (candidate.size < file.size) {
+              content = candidate;
+              name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+            }
           }
-          usedNames.add(name);
-          zip.file(name, base64, { base64: true });
+          const stem = name.replace(/\.[^.]+$/, '');
+          const ext = name.slice(stem.length);
+          let n = 1;
+          while (usedNames.has(name.toLowerCase())) name = `${stem}_${n++}${ext}`;
+          usedNames.add(name.toLowerCase());
+          zip.file(name, content);
         }
 
         progressLabel.textContent = 'ZIPを作成中…';
@@ -527,21 +562,24 @@
       });
     }
 
-    // 解像度は維持したまま高品質JPEGへ再エンコードして容量を削減する。
-    // 透過PNGは白背景で塗りつぶす（JPEGは透過を保持できないため）。
-    async function compressImage(dataUrl) {
-      const img = await loadImage(dataUrl);
-      const w = img.naturalWidth, h = img.naturalHeight;
-
+    function imageToPng(img) {
       const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
       const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0);
+      return canvas.toDataURL('image/png');
+    }
 
-      return { dataUrl: canvas.toDataURL('image/jpeg', JPEG_QUALITY), w, h };
+    async function compressJpeg(dataUrl) {
+      const img = await loadImage(dataUrl);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      return new Promise((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('JPEG変換に失敗しました')), 'image/jpeg', JPEG_QUALITY);
+      });
     }
 
 </script>

@@ -342,8 +342,10 @@
     }
     .fm-actions .fm-nav { font-weight: 700; min-width: 42px; padding: 9px 12px; }
   </style>
+  <link rel="stylesheet" href="../tool-common.css">
 </head>
 <body>
+  <a class="hub-nav" href="../../">← ToolsHub</a>
   <div class="app">
     <header>
       <h1>関数電卓</h1>
@@ -564,7 +566,11 @@
       switch (name) {
         case "sin": return Math.sin(toR(x));
         case "cos": return Math.cos(toR(x));
-        case "tan": return Math.tan(toR(x));
+        case "tan": {
+          const angle = toR(x);
+          if (Math.abs(Math.cos(angle)) < 1e-12) throw new Error("tan はこの角度で定義されません");
+          return Math.tan(angle);
+        }
         case "asin": return fromR(Math.asin(x));
         case "acos": return fromR(Math.acos(x));
         case "atan": return fromR(Math.atan(x));
@@ -628,7 +634,7 @@
         if (isDigit(c) || c === ".") {
           let num = c; i++;
           while (i < s.length && (isDigit(s[i]) || s[i] === ".")) { num += s[i]; i++; }
-          if ((num.match(/\./g) || []).length > 1) throw new Error("数値が不正です");
+          if ((num.match(/\./g) || []).length > 1 || num === ".") throw new Error("数値が不正です");
           tokens.push({ t: "num", v: parseFloat(num), raw: num });
           continue;
         }
@@ -732,7 +738,7 @@
 
     function evalFloat(s) {
       const r = parseWith(tokenize(s), numOps);
-      if (typeof r !== "number" || Number.isNaN(r)) throw new Error("計算できません");
+      if (typeof r !== "number" || !Number.isFinite(r)) throw new Error("計算できません（ゼロ除算または定義域外）");
       return r;
     }
     function compute(s) {
@@ -1017,6 +1023,7 @@
         return;
       }
       history.unshift({ toks: cloneToks(toks), text: textOf(toks), excel: excelFormulaOf(toks), dec: res.dec, frac: res.frac, showFrac: preferFraction });
+      if (history.length > 100) history.length = 100;
       renderHistory();
       toks = resultToks(res);
       caret = toks.length;

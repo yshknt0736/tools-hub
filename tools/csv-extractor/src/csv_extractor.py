@@ -4,7 +4,9 @@ Python 標準ライブラリのみで動作。GB 超のファイルもストリ�
 """
 
 import csv
+import os
 import sys
+import tempfile
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -15,29 +17,47 @@ csv.field_size_limit(min(sys.maxsize, 2_147_483_647))
 
 def parse_row_ranges(text: str):
     """
-    "1-1000, 2001, 3000-5000" -> 0始まりインデックスの set
+    "1-1000, 2001, 3000-5000" -> 0始まりの閉区間リスト。
+    巨大範囲でも行番号ごとのsetを作らない。
     空文字列 -> None (全行)
     """
     text = text.strip()
     if not text:
         return None
 
-    indices: set[int] = set()
+    ranges: list[tuple[int, int]] = []
     for part in text.split(","):
         part = part.strip()
         if not part:
-            continue
-        if "-" in part:
-            lo, hi = part.split("-", 1)
-            indices.update(range(int(lo) - 1, int(hi)))
+            raise ValueError("行範囲に空の項目があります。例: 1-100, 201")
+        bounds = part.split("-")
+        if len(bounds) > 2 or not all(bound.strip().isdigit() for bound in bounds):
+            raise ValueError(f"行範囲の形式が不正です: {part}")
+        lo = int(bounds[0])
+        hi = int(bounds[-1])
+        if lo < 1 or hi < lo:
+            raise ValueError(f"行範囲は1以上の昇順で指定してください: {part}")
+        ranges.append((lo - 1, hi - 1))
+    ranges.sort()
+    merged: list[list[int]] = []
+    for lo, hi in ranges:
+        if merged and lo <= merged[-1][1] + 1:
+            merged[-1][1] = max(merged[-1][1], hi)
         else:
-            indices.add(int(part) - 1)
-    return indices
+            merged.append([lo, hi])
+    return [tuple(item) for item in merged]
+
+
+def row_selected(index: int, ranges) -> bool:
+    if ranges is None:
+        return True
+    # 区間の数は通常少ない。巨大CSVでもメモリ使用量は一定。
+    return any(lo <= index <= hi for lo, hi in ranges)
 
 
 def sniff_dialect(path: str, encoding: str):
     """区切り文字（, / タブ）を推定。失敗時はカンマ。"""
-    with open(path, "r", encoding=encoding, newline="", errors="replace") as f:
+    with open(path, "r", encoding=encoding, newline="") as f:
         sample = f.read(8192)
     try:
         return csv.Sniffer().sniff(sample, delimiters=",\t;")
@@ -51,6 +71,11 @@ class App(tk.Tk):
         self.title("CSV 高速抽出ツール（軽量版）")
         self.geometry("960x720")
         self.minsize(700, 500)
+        style = ttk.Style(self)
+        if "clam" in style.theme_names():
+            style.theme_use("clam")
+        style.configure("TLabelframe", padding=8)
+        style.configure("TLabelframe.Label", font=("Yu Gothic UI", 10, "bold"))
 
         self._path: str | None = None
         self._dialect = csv.excel
@@ -59,6 +84,8 @@ class App(tk.Tk):
         self._skip_lines: int = 1  # データ開始までに読み飛ばす行数（空行 + ヘッダー）
         self._encoding = tk.StringVar(value="utf-8-sig")
         self._cancel = threading.Event()
+        self._load_generation = 0
+        self._working = False
 
         self._build_ui()
 
@@ -70,7 +97,7 @@ class App(tk.Tk):
         f.pack(fill="x", padx=8, pady=4)
 
         self._file_var = tk.StringVar()
-        ttk.Entry(f, textvariable=self._file_var, width=55).pack(side="left", fill="x", expand=True)
+        ttk.Entry(f, textvariable=self._file_var, width=55, state="readonly").pack(side="left", fill="x", expand=True)
         ttk.Button(f, text="開く…", command=self._open_file).pack(side="left", padx=4)
 
         ttk.Label(f, text="文字コード:").pack(side="left", padx=(12, 2))
@@ -115,8 +142,12 @@ class App(tk.Tk):
         # ── アクション ───────────────────────────────────────────────────
         af = ttk.Frame(self)
         af.pack(fill="x", padx=8, pady=4)
-        ttk.Button(af, text="プレビュー（先頭 100 行）", command=self._preview).pack(side="left")
-        ttk.Button(af, text="CSV に書き出し…", command=self._export).pack(side="left", padx=8)
+        self._preview_btn = ttk.Button(af, text="プレビュー（先頭 100 行）", command=self._preview)
+        self._preview_btn.pack(side="left")
+        self._export_btn = ttk.Button(af, text="CSV に書き出し…", command=self._export)
+        self._export_btn.pack(side="left", padx=8)
+        self._cancel_btn = ttk.Button(af, text="中止", command=self._cancel.set, state="disabled")
+        self._cancel_btn.pack(side="left")
         self._progress = ttk.Progressbar(af, mode="indeterminate", length=200)
         self._progress.pack(side="left")
         self._status = ttk.Label(af, text="")
@@ -128,7 +159,8 @@ class App(tk.Tk):
         ttk.Label(sf, text="後半の先頭にする列:").pack(side="left")
         self._split_col = ttk.Combobox(sf, width=28, state="readonly")
         self._split_col.pack(side="left", padx=6)
-        ttk.Button(sf, text="フォルダに分割出力…", command=self._split_export).pack(side="left", padx=6)
+        self._split_btn = ttk.Button(sf, text="フォルダに分割出力…", command=self._split_export)
+        self._split_btn.pack(side="left", padx=6)
         self._split_hint = ttk.Label(sf, text="", foreground="gray")
         self._split_hint.pack(side="left", padx=6)
         self._split_col.bind("<<ComboboxSelected>>", lambda _: self._update_split_hint())
@@ -152,16 +184,19 @@ class App(tk.Tk):
             filetypes=[("CSV / TSV", "*.csv *.tsv *.txt"), ("すべて", "*.*")])
         if not path:
             return
+        self._load_generation += 1
+        generation = self._load_generation
+        enc = self._encoding.get()
         self._file_var.set(path)
-        self._path = path
+        self._path = None
+        self._columns = []
         self._set_status("ヘッダー読み込み中…", busy=True)
-        threading.Thread(target=self._load_header_thread, daemon=True).start()
+        threading.Thread(target=self._load_header_thread, args=(path, enc, generation), daemon=True).start()
 
-    def _load_header_thread(self):
+    def _load_header_thread(self, path: str, enc: str, generation: int):
         try:
-            enc = self._encoding.get()
-            dialect = sniff_dialect(self._path, enc)
-            with open(self._path, "r", encoding=enc, newline="", errors="replace") as f:
+            dialect = sniff_dialect(path, enc)
+            with open(path, "r", encoding=enc, newline="") as f:
                 reader = csv.reader(f, dialect)
                 # 先頭の空行（完全な空行・全セル空白）を読み飛ばしてヘッダーを探す
                 skip = 0
@@ -171,28 +206,35 @@ class App(tk.Tk):
                         header = row
                         break
                     skip += 1
-            self._dialect = dialect
-            self._columns = header
-            self._skip_lines = skip + 1  # 空行 + ヘッダー行
-            self.after(0, lambda: self._on_header_loaded(skip))
+            self.after(0, lambda: self._on_header_loaded(path, enc, dialect, header, skip, generation))
             # 総行数は重いので別途バックグラウンドで数える
-            threading.Thread(target=self._count_rows_thread, args=(enc,), daemon=True).start()
+            threading.Thread(target=self._count_rows_thread,
+                             args=(path, enc, dialect, skip + 1, generation), daemon=True).start()
         except Exception as e:
-            self.after(0, lambda: self._on_error(str(e)))
+            msg = str(e)
+            self.after(0, lambda: self._on_error(msg) if generation == self._load_generation else None)
 
-    def _count_rows_thread(self, enc: str):
+    def _count_rows_thread(self, path: str, enc: str, dialect, skip_lines: int, generation: int):
         try:
-            n = 0
-            with open(self._path, "r", encoding=enc, newline="", errors="replace") as f:
-                for _ in f:
-                    n += 1
-            n = max(0, n - self._skip_lines)  # 空行 + ヘッダー行を除外（概算）
+            with open(path, "r", encoding=enc, newline="") as f:
+                reader = csv.reader(f, dialect)
+                for _ in range(skip_lines):
+                    next(reader, None)
+                n = sum(1 for _ in reader)
             self.after(0, lambda: self._info_label.config(
-                text=f"データ行数: 約 {n:,}  列数: {len(self._columns)}"))
+                text=f"データ行数: {n:,}  列数: {len(self._columns)}")
+                if generation == self._load_generation else None)
         except Exception:
             pass
 
-    def _on_header_loaded(self, skipped: int = 0):
+    def _on_header_loaded(self, path, enc, dialect, header, skipped, generation):
+        if generation != self._load_generation:
+            return
+        self._path = path
+        self._dialect = dialect
+        self._columns = header
+        self._skip_lines = skipped + 1
+        self._source_encoding = enc
         self._set_status("", busy=False)
         if not self._columns:
             self._info_label.config(text="ヘッダーが見つかりません（空ファイル？）")
@@ -242,20 +284,20 @@ class App(tk.Tk):
             raise ValueError("列を 1 つ以上選択してください。")
         return sel
 
-    def _iter_rows(self, col_idx: list[int], row_set, limit: int | None):
+    def _iter_rows(self, col_idx: list[int], row_ranges, limit: int | None,
+                   path: str, enc: str, dialect, skip_lines: int, columns: list[str]):
         """条件に合う行を逐次 yield（ストリーミング）。先頭はヘッダー。"""
-        enc = self._encoding.get()
-        yield [self._columns[i] for i in col_idx]  # ヘッダー
+        yield [columns[i] for i in col_idx]  # ヘッダー
 
         emitted = 0
-        with open(self._path, "r", encoding=enc, newline="", errors="replace") as f:
-            reader = csv.reader(f, self._dialect)
-            for _ in range(self._skip_lines):  # 先頭空行 + ヘッダー行を読み飛ばす
+        with open(path, "r", encoding=enc, newline="") as f:
+            reader = csv.reader(f, dialect)
+            for _ in range(skip_lines):  # 先頭空行 + ヘッダー行を読み飛ばす
                 next(reader, None)
             for data_idx, row in enumerate(reader):
                 if self._cancel.is_set():
                     break
-                if row_set is not None and data_idx not in row_set:
+                if not row_selected(data_idx, row_ranges):
                     continue
                 yield [row[i] if i < len(row) else "" for i in col_idx]
                 emitted += 1
@@ -268,26 +310,38 @@ class App(tk.Tk):
         if not self._path:
             messagebox.showwarning("警告", "ファイルを開いてください。")
             return
-        self._set_status("プレビュー生成中…", busy=True)
-        threading.Thread(target=self._preview_thread, daemon=True).start()
-
-    def _preview_thread(self):
+        if self._working:
+            return
         try:
             col_idx = self._selected_indices()
-            row_set = parse_row_ranges(self._row_var.get())
-            rows = list(self._iter_rows(col_idx, row_set, limit=100))
+            row_ranges = parse_row_ranges(self._row_var.get())
+        except ValueError as e:
+            messagebox.showwarning("入力を確認", str(e))
+            return
+        self._cancel.clear()
+        job = (self._path, self._source_encoding, self._dialect,
+               self._skip_lines, self._columns[:])
+        self._set_status("プレビュー生成中…", busy=True)
+        threading.Thread(target=self._preview_thread,
+                         args=(col_idx, row_ranges, job), daemon=True).start()
+
+    def _preview_thread(self, col_idx, row_ranges, job):
+        try:
+            rows = list(self._iter_rows(col_idx, row_ranges, 100, *job))
             self.after(0, lambda: self._show_preview(rows))
         except Exception as e:
-            self.after(0, lambda: self._on_error(str(e)))
+            msg = str(e)
+            self.after(0, lambda: self._on_error(msg))
 
     def _show_preview(self, rows: list[list[str]]):
         header, data = rows[0], rows[1:]
         self._set_status(f"プレビュー: {len(data):,} 行", busy=False)
         self._tree.delete(*self._tree.get_children())
-        self._tree.configure(columns=header)
-        for c in header:
-            self._tree.heading(c, text=c)
-            self._tree.column(c, width=110, minwidth=60)
+        column_ids = [f"col_{i}" for i in range(len(header))]
+        self._tree.configure(columns=column_ids)
+        for i, c in enumerate(header):
+            self._tree.heading(column_ids[i], text=c or f"(列{i + 1})")
+            self._tree.column(column_ids[i], width=130, minwidth=60)
         for row in data:
             self._tree.insert("", "end", values=row)
 
@@ -297,38 +351,65 @@ class App(tk.Tk):
         if not self._path:
             messagebox.showwarning("警告", "ファイルを開いてください。")
             return
+        if self._working:
+            return
+        try:
+            col_idx = self._selected_indices()
+            row_ranges = parse_row_ranges(self._row_var.get())
+        except ValueError as e:
+            messagebox.showwarning("入力を確認", str(e))
+            return
         out = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV", "*.csv"), ("すべて", "*.*")])
         if not out:
             return
+        if os.path.normcase(os.path.abspath(out)) == os.path.normcase(os.path.abspath(self._path)):
+            messagebox.showwarning("入力を確認", "入力元ファイルに上書き保存はできません。")
+            return
         self._cancel.clear()
+        job = (self._path, self._source_encoding, self._dialect,
+               self._skip_lines, self._columns[:])
         self._set_status("書き出し中…", busy=True)
-        threading.Thread(target=self._export_thread, args=(out,), daemon=True).start()
+        threading.Thread(target=self._export_thread,
+                         args=(out, col_idx, row_ranges, job), daemon=True).start()
 
-    def _export_thread(self, out_path: str):
+    def _export_thread(self, out_path: str, col_idx, row_ranges, job):
+        temp_path = None
         try:
-            col_idx = self._selected_indices()
-            row_set = parse_row_ranges(self._row_var.get())
             count = 0
-            with open(out_path, "w", encoding="utf-8-sig", newline="") as f:
+            with tempfile.NamedTemporaryFile("w", encoding="utf-8-sig", newline="",
+                                             dir=os.path.dirname(out_path) or ".",
+                                             prefix=".csv-extractor-", suffix=".tmp", delete=False) as f:
+                temp_path = f.name
                 writer = csv.writer(f)
-                for i, row in enumerate(self._iter_rows(col_idx, row_set, limit=None)):
+                for i, row in enumerate(self._iter_rows(col_idx, row_ranges, None, *job)):
                     writer.writerow(row)
                     if i > 0:
                         count += 1
                         if count % 100_000 == 0:
                             self.after(0, lambda c=count: self._status.config(
                                 text=f"書き出し中… {c:,} 行"))
+            if self._cancel.is_set():
+                self.after(0, lambda: self._set_status("中止しました", busy=False))
+                return
+            os.replace(temp_path, out_path)
+            temp_path = None
             self.after(0, lambda: self._on_export_done(out_path, count))
         except Exception as e:
-            self.after(0, lambda: self._on_error(str(e)))
+            msg = str(e)
+            self.after(0, lambda: self._on_error(msg))
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
 
     # ---------------------------------------------------------------- 列の値で分割 --
 
     def _split_export(self):
         if not self._path:
             messagebox.showwarning("警告", "ファイルを開いてください。")
+            return
+        if self._working:
             return
         sel = self._split_col.get()
         if not sel:
@@ -338,43 +419,54 @@ class App(tk.Tk):
         if key_idx < 1:
             messagebox.showwarning("警告", "前半が空になります。2列目以降を選んでください。")
             return
+        try:
+            row_ranges = parse_row_ranges(self._row_var.get())
+        except ValueError as e:
+            messagebox.showwarning("入力を確認", str(e))
+            return
         out_dir = filedialog.askdirectory(title="分割ファイルの出力先フォルダを選択")
         if not out_dir:
             return
+        stem = os.path.splitext(os.path.basename(self._path))[0]
+        left_path = os.path.join(out_dir, self._safe_name(f"{stem}_left"))
+        right_path = os.path.join(out_dir, self._safe_name(f"{stem}_right"))
+        if any(os.path.exists(path) for path in (left_path, right_path)):
+            if not messagebox.askyesno("上書き確認", "分割先に同名ファイルがあります。上書きしますか？"):
+                return
         self._cancel.clear()
+        job = (self._path, self._source_encoding, self._dialect,
+               self._skip_lines, self._columns[:])
         self._set_status("分割書き出し中…", busy=True)
-        threading.Thread(target=self._split_thread, args=(out_dir, key_idx), daemon=True).start()
+        threading.Thread(target=self._split_thread,
+                         args=(left_path, right_path, key_idx, row_ranges, job), daemon=True).start()
 
-    def _split_thread(self, out_dir: str, key_idx: int):
+    def _split_thread(self, left_path: str, right_path: str, key_idx: int, row_ranges, job):
         """指定列の手前で列を 2 分割し、それぞれ別ファイルに全行を書き出す。"""
-        import os
-        ncol = len(self._columns)
+        path, enc, dialect, skip_lines, columns = job
+        ncol = len(columns)
         left_idx = list(range(0, key_idx))      # 前半: 0 〜 key-1
         right_idx = list(range(key_idx, ncol))   # 後半: key 〜 末尾
-        cols = [c if c.strip() else f"col{i + 1}" for i, c in enumerate(self._columns)]
-        stem = os.path.splitext(os.path.basename(self._path))[0]
-        left_path = os.path.join(out_dir, self._safe_name(f"{stem}_{cols[0]}-{cols[key_idx - 1]}"))
-        right_path = os.path.join(out_dir, self._safe_name(f"{stem}_{cols[key_idx]}-{cols[-1]}"))
-
-        row_set = parse_row_ranges(self._row_var.get())
-        enc = self._encoding.get()
         total = 0
-        fl = fr = None
+        temp_left = temp_right = None
         try:
-            fl = open(left_path, "w", encoding="utf-8-sig", newline="")
-            fr = open(right_path, "w", encoding="utf-8-sig", newline="")
+            fl = tempfile.NamedTemporaryFile("w", encoding="utf-8-sig", newline="",
+                                             dir=os.path.dirname(left_path), prefix=".csv-left-", delete=False)
+            temp_left = fl.name
+            fr = tempfile.NamedTemporaryFile("w", encoding="utf-8-sig", newline="",
+                                             dir=os.path.dirname(right_path), prefix=".csv-right-", delete=False)
+            temp_right = fr.name
             wl, wr = csv.writer(fl), csv.writer(fr)
-            wl.writerow([self._columns[i] for i in left_idx])
-            wr.writerow([self._columns[i] for i in right_idx])
+            wl.writerow([columns[i] for i in left_idx])
+            wr.writerow([columns[i] for i in right_idx])
 
-            with open(self._path, "r", encoding=enc, newline="", errors="replace") as f:
-                reader = csv.reader(f, self._dialect)
-                for _ in range(self._skip_lines):
+            with open(path, "r", encoding=enc, newline="") as f:
+                reader = csv.reader(f, dialect)
+                for _ in range(skip_lines):
                     next(reader, None)
                 for data_idx, row in enumerate(reader):
                     if self._cancel.is_set():
                         break
-                    if row_set is not None and data_idx not in row_set:
+                    if not row_selected(data_idx, row_ranges):
                         continue
                     wl.writerow([row[i] if i < len(row) else "" for i in left_idx])
                     wr.writerow([row[i] if i < len(row) else "" for i in right_idx])
@@ -382,16 +474,27 @@ class App(tk.Tk):
                     if total % 100_000 == 0:
                         self.after(0, lambda t=total: self._status.config(
                             text=f"分割中… {t:,} 行"))
+            fl.close()
+            fr.close()
+            if self._cancel.is_set():
+                self.after(0, lambda: self._set_status("中止しました", busy=False))
+                return
+            os.replace(temp_left, left_path)
+            temp_left = None
+            os.replace(temp_right, right_path)
+            temp_right = None
+            self.after(0, lambda: self._on_split_done(
+                os.path.basename(left_path), os.path.basename(right_path), total))
         except Exception as e:
-            if fl: fl.close()
-            if fr: fr.close()
-            self.after(0, lambda: self._on_error(str(e)))
-            return
-
-        fl.close()
-        fr.close()
-        self.after(0, lambda: self._on_split_done(
-            os.path.basename(left_path), os.path.basename(right_path), total))
+            msg = str(e)
+            self.after(0, lambda: self._on_error(msg))
+        finally:
+            for handle in (locals().get("fl"), locals().get("fr")):
+                if handle and not handle.closed:
+                    handle.close()
+            for temp_path in (temp_left, temp_right):
+                if temp_path and os.path.exists(temp_path):
+                    os.unlink(temp_path)
 
     @staticmethod
     def _safe_name(name: str) -> str:
@@ -414,7 +517,11 @@ class App(tk.Tk):
     # ---------------------------------------------------------------- ヘルパー --
 
     def _set_status(self, msg: str, *, busy: bool):
+        self._working = busy
         self._status.config(text=msg)
+        for button in (self._preview_btn, self._export_btn, self._split_btn):
+            button.configure(state="disabled" if busy else "normal")
+        self._cancel_btn.configure(state="normal" if busy else "disabled")
         if busy:
             self._progress.start(12)
         else:
