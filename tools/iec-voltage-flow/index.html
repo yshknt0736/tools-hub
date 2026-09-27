@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>絶縁協調 電圧計算フロー</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#1c2230; --muted:#667085; --line:#e3e6ec;
+  --accent:#2563eb; --accent-soft:#dbe7ff; --site:#0f9d74; --std:#2563eb; --lab:#b45309;
+  --warn:#b42318; --bar-bg:#eef1f5; --shadow:0 1px 2px rgba(16,24,40,.06),0 4px 12px rgba(16,24,40,.06);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1218; --panel:#171b23; --ink:#e6e9ef; --muted:#98a2b3; --line:#2a303b;
+    --accent:#6ea0ff; --accent-soft:#1f2c47; --site:#34c79a; --std:#6ea0ff; --lab:#f0a44b;
+    --warn:#ff7a6e; --bar-bg:#222834; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1218; --panel:#171b23; --ink:#e6e9ef; --muted:#98a2b3; --line:#2a303b;
+  --accent:#6ea0ff; --accent-soft:#1f2c47; --site:#34c79a; --std:#6ea0ff; --lab:#f0a44b;
+  --warn:#ff7a6e; --bar-bg:#222834; --shadow:none;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Yu Gothic UI","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;line-height:1.6}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:1.35rem;margin:0 0 2px}
+.sub{color:var(--muted);font-size:.9rem;margin:0 0 16px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.tab{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 14px;border-radius:999px;cursor:pointer;font:inherit;font-size:.92rem;transition:all .2s}
+.tab.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.grid{display:grid;grid-template-columns:300px 1fr;gap:16px}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.grid>*{min-width:0}
+.ex{overflow-wrap:anywhere}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow)}
+.card h2{font-size:1rem;margin:0 0 10px}
+.field{display:grid;grid-template-columns:1fr 92px;align-items:center;gap:8px;margin:8px 0}
+.field label{font-size:.86rem}
+.field small{display:block;color:var(--muted);font-size:.74rem;line-height:1.3}
+.field input,.field select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;font-size:.9rem;text-align:right}
+.field select{text-align:left}
+.full{grid-template-columns:1fr}
+.grp{font-size:.78rem;color:var(--muted);margin:14px 0 2px;border-top:1px dashed var(--line);padding-top:10px}
+.grp:first-of-type{border-top:none;padding-top:0;margin-top:0}
+.ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 14px;border-radius:8px;cursor:pointer;font:inherit;font-size:.9rem}
+.btn.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn:disabled{opacity:.4;cursor:default}
+.dots{display:flex;gap:6px;margin-left:auto}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--line);cursor:pointer;transition:all .25s}
+.dot.on{background:var(--accent);transform:scale(1.3)}
+.ladder{display:flex;flex-direction:column;gap:0}
+.row{display:grid;grid-template-columns:150px 1fr 104px;gap:10px;align-items:center;padding:8px 8px;border-radius:10px;transition:background .3s, opacity .4s}
+@media (max-width:560px){.row{grid-template-columns:84px minmax(0,1fr) 70px}.dots{display:none}}
+.row.cur{background:var(--accent-soft)}
+.row.future{opacity:.28}
+.row .nm{font-size:.84rem;line-height:1.25}
+.row .nm b{display:block;font-size:.95rem}
+.bar{height:22px;background:var(--bar-bg);border-radius:6px;overflow:hidden;position:relative}
+.fill{height:100%;width:0;border-radius:6px;transition:width .8s cubic-bezier(.2,.8,.2,1), background .3s}
+.fill.site{background:var(--site)} .fill.std{background:var(--std)} .fill.lab{background:var(--lab)} .fill.neu{background:var(--muted)}
+.val{font-variant-numeric:tabular-nums;text-align:right;font-weight:600}
+.val small{display:block;font-weight:400;color:var(--muted);font-size:.72rem}
+.arrow{display:flex;align-items:center;gap:8px;padding:0 8px 0 160px;height:26px;color:var(--muted);font-size:.8rem;transition:opacity .4s}
+@media (max-width:560px){.arrow{padding-left:104px}}
+.arrow .chip{border:1px solid var(--line);border-radius:999px;padding:0 10px;background:var(--panel);font-variant-numeric:tabular-nums}
+.arrow.future{opacity:.2}
+.arrow.cur .chip{border-color:var(--accent);color:var(--accent);font-weight:600}
+.explain{margin-top:14px;min-height:170px;position:relative}
+.ex{animation:slide .45s ease}
+@keyframes slide{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+.ex h3{margin:0 0 6px;font-size:1.02rem}
+.formula{font-family:"Cambria Math","Times New Roman",serif;font-size:1.15rem;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0;overflow-x:auto;white-space:nowrap}
+.tag{display:inline-block;font-size:.72rem;border-radius:999px;padding:1px 9px;margin-right:6px;color:#fff;vertical-align:middle}
+.tag.site{background:var(--site)} .tag.std{background:var(--std)} .tag.lab{background:var(--lab)}
+.ref{color:var(--muted);font-size:.8rem}
+.warn{color:var(--warn);font-size:.85rem}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin-top:10px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;background:var(--c)}
+.cmp{display:grid;gap:14px}
+.cmpbar{display:grid;grid-template-columns:170px 1fr 104px;gap:10px;align-items:center}
+@media (max-width:560px){.cmpbar{grid-template-columns:90px minmax(0,1fr) 70px}.arrow{padding-left:92px}}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.verdict{padding:10px 12px;border-radius:8px;background:var(--accent-soft);font-size:.9rem}
+.foot{margin-top:18px;color:var(--muted);font-size:.78rem}
+.foot li{margin:2px 0}
+.fade{animation:fadein .4s ease}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+/* Calculation workspace */
+:root{
+  --bg:#f2f5fa;--panel:#fff;--ink:#14243c;--muted:#617189;--line:#dce5ef;
+  --accent:#2257d5;--accent-soft:#eaf1ff;--site:#087f73;--std:#3265cd;--lab:#d17a24;
+  --bar-bg:#eaf0f6;--shadow:0 12px 38px rgba(28,48,83,.07),0 2px 6px rgba(28,48,83,.04)
+}
+body{background:radial-gradient(circle at 82% 0%,#e5edfb 0,transparent 34%),var(--bg);line-height:1.55}
+.wrap{max-width:1320px;padding:32px 22px 64px}
+.masthead{background:linear-gradient(115deg,#102d5a,#174376 62%,#0d5970);color:#fff;border-radius:24px;padding:29px 34px 31px;box-shadow:0 18px 42px rgba(16,45,90,.18);margin-bottom:18px;position:relative;overflow:hidden}
+.masthead::after{content:"";position:absolute;right:-70px;top:-135px;width:380px;height:380px;border:1px solid rgba(255,255,255,.14);border-radius:50%;box-shadow:0 0 0 42px rgba(255,255,255,.035),0 0 0 90px rgba(255,255,255,.025);pointer-events:none}
+.eyebrow{font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#9ce0e1;font-weight:700;margin:0 0 10px}
+h1{font-size:clamp(1.6rem,3vw,2.2rem);letter-spacing:.025em;line-height:1.3;margin:0 0 9px}
+.sub{color:#d9e5f5;max-width:770px;font-size:.89rem;margin:0;line-height:1.7}
+.tabs{background:#e6ecf5;border:1px solid #d7e0ed;border-radius:14px;padding:5px;gap:4px;display:inline-flex;max-width:100%;margin:0 0 18px}
+.tab{background:transparent;border-color:transparent;border-radius:10px;color:#536681;font-weight:600;padding:10px 15px}
+.tab:hover:not(.on){background:rgba(255,255,255,.7)}
+.tab.on{background:#fff;color:#174cba;border-color:#fff;box-shadow:0 2px 7px rgba(26,57,105,.11)}
+.grid{grid-template-columns:minmax(290px,320px) minmax(0,1fr);gap:18px;align-items:start}
+.card{border-radius:19px;padding:21px;box-shadow:var(--shadow)}
+.inputs-card{position:sticky;top:18px}
+.card h2{font-size:1rem;letter-spacing:.01em;margin-bottom:13px}
+.field{gap:10px;margin:11px 0;grid-template-columns:minmax(0,1fr) 100px}
+.field label{font-size:.83rem;font-weight:600}
+.field small{font-weight:400;margin-top:3px;line-height:1.45}
+.field input,.field select{background:#f8fafd;border:1px solid #ced9e7;border-radius:9px;padding:8px 10px;font-variant-numeric:tabular-nums}
+.field input:focus,.field select:focus,.btn:focus-visible,.tab:focus-visible,.dot:focus-visible{outline:3px solid rgba(34,87,213,.2);outline-offset:2px;border-color:var(--accent)}
+.series-note{font-size:.76rem;line-height:1.5;color:var(--muted);background:var(--accent-soft);border-radius:9px;padding:8px 10px;margin-top:7px;font-variant-numeric:tabular-nums}
+.series-note.warn{color:var(--warn)}
+.series-hint{font-size:.74rem;line-height:1.5;color:var(--muted);margin:6px 2px 0}
+.grp{letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:#8290a4;margin-top:19px;padding-top:15px}
+.ctrl{padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.btn{border-radius:9px;font-weight:600;padding:8px 12px;transition:background .2s,transform .2s}
+.btn:hover:not(:disabled){transform:translateY(-1px);background:var(--accent-soft)}
+.btn.pri:hover:not(:disabled){background:#1648bf}
+.dots{gap:7px}
+.dot{width:10px;height:10px;border:0;padding:0;cursor:pointer}
+.flow-heading{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:18px}
+.flow-kicker{color:var(--accent);font-size:.7rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.flow-heading h2{font-size:1.24rem;line-height:1.35;margin:4px 0 0}
+.flow-count{font-size:.78rem;font-weight:700;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.progress-track{height:5px;background:#e9eef6;border-radius:10px;overflow:hidden;margin:-7px 0 20px}
+.progress-track span{display:block;height:100%;border-radius:10px;background:linear-gradient(90deg,#16a39b,#3265cd);transition:width .35s}
+.ladder{gap:0}
+.flow-step{position:relative;display:grid;grid-template-columns:34px minmax(0,1fr) 116px;gap:13px;padding:15px 15px 15px 12px;border:1px solid var(--line);border-radius:14px;background:#fff;transition:border-color .25s,box-shadow .25s,background .25s}
+.flow-step.active{border-color:#8aacf2;background:linear-gradient(110deg,#f1f6ff,#fff 68%);box-shadow:0 7px 18px rgba(34,87,213,.1)}
+.flow-step.complete{border-color:#d3e5e2}
+.flow-index{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;background:#edf2f8;color:#62748f;font-size:.8rem;font-weight:800;font-variant-numeric:tabular-nums}
+.flow-step.active .flow-index{background:var(--accent);color:#fff}
+.flow-step.complete .flow-index{background:#e3f5f1;color:#087f73}
+.flow-title{font-size:.84rem;color:var(--muted);font-weight:600;line-height:1.35}
+.flow-title strong{display:block;color:var(--ink);font-size:1rem;line-height:1.3;margin-bottom:3px}
+.step-equation{font-family:"Cambria Math","Times New Roman","Yu Gothic UI",serif;font-size:.93rem;line-height:1.65;margin-top:9px;color:#314763;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.step-equation .eq-line{display:block}
+.step-equation .eq-line + .eq-line{margin-top:2px}
+.step-equation b{color:#153d91;font-weight:700}
+.flow-value{text-align:right;align-self:start;white-space:nowrap;font-variant-numeric:tabular-nums;font-size:1.08rem;color:#14243c;font-weight:800}
+.flow-value small{font-size:.71rem;color:var(--muted);font-weight:500;margin-left:3px}
+.flow-value::before{content:"";display:block;width:33px;height:4px;border-radius:5px;background:var(--step-color,var(--std));margin:1px 0 8px auto}
+.transition{height:29px;display:flex;align-items:center;margin-left:28px;padding-left:24px;border-left:2px solid #d6e2ee;color:var(--muted);font-size:.74rem}
+.transition span{background:var(--bg);padding:1px 9px;border-radius:999px;border:1px solid var(--line);line-height:1.35}
+.explain{margin-top:19px;min-height:0;border-radius:15px;background:#f8fafd;box-shadow:none;border-color:#e1e9f3;padding:18px 20px}
+.ex h3{font-size:.96rem;line-height:1.55;margin-bottom:8px}
+.ex .detail-copy{font-size:.87rem;line-height:1.72}
+.ex .ref{margin-top:9px}
+.tag{font-size:.68rem;padding:3px 8px}
+.legend{border-top:1px solid var(--line);padding-top:14px;margin-top:19px;gap:8px 18px}
+.foot{margin:21px 6px 0;line-height:1.6}
+.cmp{gap:17px}.cmpbar{grid-template-columns:190px minmax(0,1fr) 100px}
+.cmp .bar{height:16px;border-radius:10px}.cmp .fill{border-radius:10px}
+.cmp-section-title{font-size:.78rem;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:800;border-bottom:1px solid var(--line);padding-bottom:8px}
+.cmp-formulas{background:#f8fafd;border:1px solid var(--line);border-radius:12px;padding:13px 15px;font-size:.82rem;line-height:1.8;overflow-wrap:anywhere}
+.cmp-formulas div+div{margin-top:5px}
+.verdict{border:1px solid #cbdcf8;border-radius:12px;padding:15px 16px;line-height:1.65}
+table{background:#fff;border:1px solid var(--line);border-radius:12px;border-collapse:separate;border-spacing:0;overflow:hidden}
+th,td{padding:10px 11px}
+th{background:#f4f7fb}
+@media (max-width:930px){.grid{grid-template-columns:minmax(0,1fr)}.inputs-card{position:static}.inputs-card .field{max-width:520px}}
+@media (max-width:620px){.wrap{padding:13px 11px 36px}.masthead{padding:23px 20px;border-radius:18px}.tabs{display:grid;grid-template-columns:1fr;width:100%}.tab{text-align:left}.card{padding:15px;border-radius:15px}.flow-step{grid-template-columns:28px minmax(0,1fr);padding:12px;gap:9px}.flow-index{width:27px;height:27px}.flow-value{grid-column:2;text-align:left;font-size:.98rem}.flow-value::before{display:inline-block;width:19px;vertical-align:4px;margin:0 6px 0 0}.transition{margin-left:23px;padding-left:18px}.cmpbar{grid-template-columns:80px minmax(0,1fr) 68px}.cmpbar .nm{font-size:.75rem!important}.flow-heading h2{font-size:1.07rem}.flow-count{font-size:.7rem}.ctrl{gap:6px}.btn{padding:7px 9px;font-size:.78rem}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1725;--panel:#172335;--ink:#e8eef8;--muted:#9aabc2;--line:#30425a;--accent:#83a9ff;--accent-soft:#203b64;--site:#39c5b0;--std:#7ca7ff;--lab:#f5aa63;--bar-bg:#263a51;--shadow:none}}
+:root[data-theme="dark"]{--bg:#0e1725;--panel:#172335;--ink:#e8eef8;--muted:#9aabc2;--line:#30425a;--accent:#83a9ff;--accent-soft:#203b64;--site:#39c5b0;--std:#7ca7ff;--lab:#f5aa63;--bar-bg:#263a51;--shadow:none}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) body{background:var(--bg)}}
+:root[data-theme="dark"] body{background:var(--bg)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .flow-step,:root:not([data-theme="light"]) table{background:#172335}:root:not([data-theme="light"]) .flow-step.active{background:#1b3151}:root:not([data-theme="light"]) .explain,:root:not([data-theme="light"]) .cmp-formulas,:root:not([data-theme="light"]) th,:root:not([data-theme="light"]) .field input,:root:not([data-theme="light"]) .field select{background:#1b2b40}:root:not([data-theme="light"]) .tabs{background:#1b2b40;border-color:#30425a}:root:not([data-theme="light"]) .tab.on{background:#2c4671;color:#d9e7ff}:root:not([data-theme="light"]) .step-equation{color:#bfd0e8}:root:not([data-theme="light"]) .step-equation b{color:#9bbaff}}
+:root[data-theme="dark"] .flow-step,:root[data-theme="dark"] table{background:#172335}:root[data-theme="dark"] .flow-step.active{background:#1b3151}:root[data-theme="dark"] .explain,:root[data-theme="dark"] .cmp-formulas,:root[data-theme="dark"] th,:root[data-theme="dark"] .field input,:root[data-theme="dark"] .field select{background:#1b2b40}:root[data-theme="dark"] .tabs{background:#1b2b40;border-color:#30425a}:root[data-theme="dark"] .tab.on{background:#2c4671;color:#d9e7ff}:root[data-theme="dark"] .step-equation{color:#bfd0e8}:root[data-theme="dark"] .step-equation b{color:#9bbaff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <p class="eyebrow">Insulation coordination · Calculation flow</p>
+    <h1>絶縁協調 電圧計算フロー</h1>
+    <p class="sub">代表過電圧から試験電圧まで、各段の式と数値を確認できます。IEC 60071の経路（定格値で標高を補正）とIEC 62927の経路（試験段階で補正）を切り替えて比較します。</p>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab on" data-path="a">① IEC 60071の経路（定格で補正）</button>
+    <button class="tab" data-path="b">② IEC 62927の経路（試験で補正）</button>
+    <button class="tab" data-path="c">③ 比較</button>
+  </div>
+
+  <div class="grid">
+    <div class="card inputs-card">
+      <h2>入力</h2>
+      <div class="grp">過電圧と協調</div>
+      <div class="field"><label>代表過電圧 U<sub>rp</sub> <span id="UrpUnit">[kV peak]</span><small>選択した試験波形と同じ単位で入力</small></label><input id="Urp" type="number" value="500" step="10"></div>
+      <div class="field"><label>協調係数 K<sub>c</sub><small>決定論的手法なら K<sub>cd</sub> ≈ 1.0〜1.1</small></label><input id="Kc" type="number" value="1.10" step="0.01"></div>
+      <div class="field"><label>安全係数 K<sub>s</sub><small>外部 1.05／内部 1.15（原文未確認）</small></label><input id="Ks" type="number" value="1.05" step="0.01"></div>
+
+      <div class="grp">設置条件</div>
+      <div class="field"><label>設置標高 H [m]</label><input id="H" type="number" value="2000" step="100"></div>
+      <div class="field"><label>指数 m<small>概算用。波形・放電条件に応じて設定</small></label><input id="m" type="number" value="1.00" step="0.05"></div>
+      <div class="field full"><label>①の標高の基準点</label>
+        <select id="base"><option value="0">海抜0 m基準（IEC 60071-2）</option><option value="1000">1,000 m基準（機器規格・IEC 62927）</option></select></div>
+      <div class="field"><label>バルブホール設計最高温度 [℃]<small>②のみ使用</small></label><input id="tD" type="number" value="20" step="1"></div>
+
+      <div class="grp">① 標準値の候補系列</div>
+      <div class="field full"><select id="series">
+        <option value="impulse">雷インパルス（波高値）</option>
+        <option value="ac">交流短時間耐電圧（実効値）</option>
+        <option value="si">開閉インパルス（範囲II・対地、波高値）</option>
+        <option value="none">丸めない（波形・単位は入力に準拠）</option>
+      </select></div>
+      <div class="series-note" id="seriesNote" aria-live="polite"></div>
+      <p class="series-hint">波形を変更したら U<sub>rp</sub>・K<sub>c</sub>・m をその波形に合わせて確認してください。</p>
+
+      <div class="grp">試験所の大気条件</div>
+      <div class="field"><label>試験所の標高 H<sub>L</sub> [m]<small>標高から気圧を概算</small></label><input id="HL" type="number" value="0" min="0" step="100"></div>
+      <div class="field"><label>気温 [℃]</label><input id="tL" type="number" value="20" step="1"></div>
+    </div>
+
+    <div class="card" id="main">
+      <div class="ctrl" id="ctrl">
+        <button class="btn" id="prev">← 前へ</button>
+        <button class="btn pri" id="next">次へ →</button>
+        <button class="btn" id="play">▶ 自動再生</button>
+        <button class="btn" id="reset">最初から</button>
+        <div class="dots" id="dots"></div>
+      </div>
+      <div id="view"></div>
+      <div class="legend">
+        <span style="--c:var(--site)">設置条件での値</span>
+        <span style="--c:var(--std)">標準大気（または規定の基準条件）での値</span>
+        <span style="--c:var(--lab)">試験所で実際に印加する値</span>
+      </div>
+    </div>
+  </div>
+
+  <ul class="foot">
+    <li>用語の定義はIEC 60071-1:2019（3.19〜3.34）、試験所の換算はIEC 60060-1、②の標高の扱いはIEC 62927:2017/COR1:2017に基づく。</li>
+    <li>湿度補正（k<sub>2</sub>）は省略し、空気密度補正 k<sub>1</sub> = δ<sup>m</sup> のみで計算している。指数 w、および g による m の決定も省略。</li>
+    <li>②の試験基準値は、流れを示すため U<sub>cw</sub> × K<sub>s</sub> と仮定している。定格系列で丸めない。実際のIEC 62927の規定試験電圧は各試験条項による。</li>
+    <li>試験所の気圧は標高から p<sub>L</sub> = 101.3e<sup>−H<sub>L</sub>/8150</sup> kPa で概算する。実際の試験では測定した気圧を使う。</li>
+    <li>交流耐電圧は実効値、雷・開閉インパルスは波高値。候補系列はIEC 60071-1 5.6（交流）と5.7（インパルス）で分ける。同じ数値でも同じ試験電圧を意味しない。</li>
+    <li>①の系列選択は数値の切り上げのみを示す。実際の定格絶縁レベルは、設備の最高電圧 U<sub>m</sub>、絶縁部位、試験波形を踏まえて表2・表3と機器規格から選ぶ。要求波形と試験波形が違う場合は試験換算係数 K<sub>tc</sub> が必要。</li>
+    <li>大気補正は説明用に共通の指数 m と空気密度補正だけを使う。IEC 60060-1での試験条件の補正では、m と湿度補正を放電条件・波形に応じて評価する。</li>
+    <li>K<sub>s</sub> の値、K<sub>a</sub> の式（IEC 60071-2）は原文未確認。数値は考え方の確認用で、設計値ではない。</li>
+    <li>出典ノート：IEC_大気補正係数.md（4章・5章）</li>
+  </ul>
+</div>
+
+<script>
+const SERIES = {
+  ac:[10,20,28,38,50,70,95,115,140,185,230,275,325,360,395,460,510,570,630,680],
+  si:[750,850,950,1050,1175,1300,1425,1550,1675,1800,1950],
+  impulse:[20,40,60,75,95,125,145,170,200,250,325,380,450,550,650,750,850,950,1050,1175,1300,1425,1550,1675,1800,1950,2100,2250,2400,2550,2700,2900,3100],
+  none:null
+};
+const $ = id => document.getElementById(id);
+const f1 = v => (v==null||!isFinite(v)) ? "—" : v.toFixed(1);
+const f3 = v => (v==null||!isFinite(v)) ? "—" : v.toFixed(3);
+let path = "a", step = 0, timer = null;
+
+function pick(v, key, unit){
+  const s = SERIES[key];
+  if(!s) return {v, lower:null, note:"丸めなし"};
+  if(!Number.isFinite(v)) return {v:NaN, lower:null, note:"入力値を確認してください"};
+  if(v < s[0]-1e-9) return {v:NaN, lower:null,
+    note:`この系列の下限は ${f1(s[0])} ${unit}。要求値 ${f1(v)} ${unit} は適用範囲外`};
+  const index = s.findIndex(x => x >= v - 1e-9);
+  if(index < 0) return {v:NaN, lower:s[s.length-1], note:"系列の範囲外：候補を選べない"};
+  return {v:s[index], lower:index ? s[index-1] : null,
+    note:index ? `直前の候補 ${f1(s[index-1])} ${unit} は要求値未満` : `系列の最小候補は ${f1(s[0])} ${unit}`};
+}
+
+function compute(){
+  const g = id => parseFloat($(id).value);
+  const Urp=g("Urp"), Kc=g("Kc"), Ks=g("Ks"), H=g("H"), m=g("m"), base=+$("base").value,
+        tD=g("tD"), HL=g("HL"), tL=g("tL"), key=$("series").value;
+  const unit = key==="ac" ? "kV rms" : key==="none" ? "kV" : "kV peak";
+  const Ucw = Kc*Urp;
+  const Heff = base===0 ? H : Math.max(H-1000,0);
+  const Ka = Math.exp(m*Heff/8150);
+  const UcwKa = Ucw*Ka;
+  const Urw = UcwKa*Ks;
+  const Uw = pick(Urw,key,unit);
+  const pL = 101.3*Math.exp(-HL/8150);
+  const dL = Math.exp(-HL/8150)*(293/(273+tL));
+  const KL = Math.pow(dL,m);
+  const UtA = KL*Uw.v;
+  // IEC 62927 path
+  const Ureq = Ucw*Ks;
+  const Us = {v:Ureq, note:"説明用の仮定値（系列の丸めなし）"};
+  const pr = H<=1000 ? 1 : Math.exp(-(H-1000)/8150);
+  const dS = pr*(293/(273+tD));
+  const KS = Math.pow(dS,m);
+  const UtB = Us.v*KL/KS;
+  // unrounded equivalents
+  const Ka1000 = Math.exp(m*Math.max(H-1000,0)/8150);
+  const eqA = Ureq*Ka1000*KL, eqB = Ureq*KL/KS;
+  return {Urp,Kc,Ks,H,m,base,tD,HL,pL,tL,key,unit,Ucw,Heff,Ka,UcwKa,Urw,Uw,dL,KL,UtA,Ureq,Us,pr,dS,KS,UtB,Ka1000,eqA,eqB};
+}
+
+function stepsA(c){
+  const hTxt = c.base===0 ? `H = ${c.H} m（海抜0 m基準）` : `H − 1000 = ${c.Heff} m（1,000 m基準）`;
+  return [
+    {nm:"代表過電圧",sym:"U<sub>rp</sub>",v:c.Urp,cls:"site",arrow:null,
+     h:"出発点：代表過電圧",tag:"site",
+     fm:`U<sub>rp</sub> = ${f1(c.Urp)} ${c.unit}`,
+     tx:"系統で起こる過電圧を、絶縁に同じ影響を与える標準波形の電圧で代表させた値。避雷器で保護する場合は、その保護レベルが基準になる。",ref:"IEC 60071-1 3.19"},
+    {nm:"協調耐電圧",sym:"U<sub>cw</sub>",v:c.Ucw,cls:"site",arrow:`× K<sub>c</sub> = ${c.Kc.toFixed(2)}`,
+     h:"協調耐電圧：実使用条件で必要な耐力",tag:"site",
+     fm:`U<sub>cw</sub> = K<sub>c</sub> × U<sub>rp</sub> = ${c.Kc.toFixed(2)} × ${f1(c.Urp)} = <b>${f1(c.Ucw)} ${c.unit}</b>`,
+     tx:"性能基準（許容故障率など）を<b>設置場所の条件のままで</b>満たす耐電圧。標高の影響はまだ入れない。試験電圧とは別の概念として扱えるのはこの値だけ。",ref:"IEC 60071-1 3.25・3.26"},
+    {nm:"標高補正後",sym:"U<sub>cw</sub>·K<sub>a</sub>",v:c.UcwKa,cls:"std",arrow:`× K<sub>a</sub> = ${f3(c.Ka)}`,
+     h:"標高補正：設置条件 → 標準大気",tag:"std",
+     fm:`H<sub>eff</sub> = ${c.Heff} m　K<sub>a</sub> = e<sup>m·H<sub>eff</sub>/8150</sup> = e<sup>${c.m.toFixed(2)}×${c.Heff}/8150</sup> = <b>${f3(c.Ka)}</b>`,
+     detail:`U<sub>cw</sub>·K<sub>a</sub> = ${f1(c.Ucw)} × ${f3(c.Ka)} = <b>${f1(c.UcwKa)} ${c.unit}</b>`,
+     tx:`${hTxt}。高地は空気が薄く絶縁が弱いので、標準大気で同じ実力を示すには高い電圧で確かめる必要がある。K<sub>a</sub> は1以上で、IEC 60060-1の K<sub>t</sub>（高地で1未満）とは<b>逆向き</b>。外部絶縁にのみ適用する。`,ref:"IEC 60071-1 3.29・3.30／IEC 60071-2"},
+    {nm:"要求耐電圧",sym:"U<sub>rw</sub>",v:c.Urw,cls:"std",arrow:`× K<sub>s</sub> = ${c.Ks.toFixed(2)}`,
+     h:"要求耐電圧：試験で耐えるべき値",tag:"std",
+     fm:`U<sub>rw</sub> = U<sub>cw</sub> × K<sub>a</sub> × K<sub>s</sub> = ${f1(c.Ucw)} × ${f3(c.Ka)} × ${c.Ks.toFixed(2)} = <b>${f1(c.Urw)} ${c.unit}</b>`,
+     detail:`= (${f1(c.UcwKa)} ${c.unit}) × ${c.Ks.toFixed(2)}`,
+     tx:"大気補正の後に安全係数を掛ける。標準耐電圧試験でこの値に耐えれば、実使用条件で性能基準を満たすとみなせる。端数を含む計算値。",ref:"IEC 60071-1 3.28・3.31"},
+    {nm:"標準値の候補",sym:"U<sub>w,候補</sub>",v:c.Uw.v,cls:"std",arrow:c.key==="none"?"系列を使わず引き継ぐ":"要求値以上の最小候補へ",
+     h:"標準値の候補を確認",tag:"std",
+     fm:`U<sub>rw</sub> = ${f1(c.Urw)} ${c.unit} → ${Number.isFinite(c.Uw.v)?`${c.key==="none"?"丸めなし":"候補系列で切り上げ"} → <b>${f1(c.Uw.v)} ${c.unit}</b>`:"<b>この系列では選択不可</b>"}`,
+     detail:`${c.Uw.note}${Number.isFinite(c.Uw.v)&&c.key!=="none"?`。要求値との差は +${f1(c.Uw.v-c.Urw)} ${c.unit}`:""}`,
+     tx:`${Number.isFinite(c.Uw.v)?"ここでは選択した数値系列の中で、要求耐電圧以上の最小候補を示す。":"選択中の系列はこの要求値に適用できないため、試験電圧は計算しない。系列と要求値を確認する。"}正式な定格絶縁レベルを決めるには、設備の最高電圧 U<sub>m</sub> と絶縁部位に対応する組合せを規格表・機器規格で確認する。`,ref:"IEC 60071-1 5.5・5.7・表2／表3（候補の表示）"},
+    {nm:"試験電圧",sym:"U",v:c.UtA,cls:"lab",arrow:`× K<sub>t</sub> = ${f3(c.KL)}`,
+     h:"試験所で実際に印加する電圧",tag:"lab",
+     fm:`p<sub>L</sub> = 101.3e<sup>−${c.HL}/8150</sup> = ${f1(c.pL)} kPa　δ<sub>L</sub> = (${f1(c.pL)}/101.3) × 293/(273+${c.tL}) = ${f3(c.dL)}`,
+     detail:`K<sub>t</sub> = δ<sub>L</sub><sup>m</sup> = ${f3(c.dL)}<sup>${c.m.toFixed(2)}</sup> = ${f3(c.KL)}　U = ${f3(c.KL)} × ${f1(c.Uw.v)} = <b>${f1(c.UtA)} ${c.unit}</b>`,
+     tx:"前段の候補値を、試験所の標高から概算した気圧と入力した気温で換算する参考計算。実際の試験では確定した定格値と測定気圧を用いる。",ref:"IEC 60060-1 4.3（気圧は標高から概算）"}
+  ];
+}
+
+function stepsB(c){
+  const altTxt = c.H<=1000 ? "H ≤ 1,000 m なので気圧の補正なし（標準気圧を使う）" : `H > 1,000 m なので基準気圧を1,000 m相当に置き換え：p/p<sub>1000</sub> = e<sup>−(${c.H}−1000)/8150</sup> = ${f3(c.pr)}`;
+  return [
+    {nm:"代表過電圧",sym:"U<sub>rp</sub>",v:c.Urp,cls:"site",arrow:null,
+     h:"出発点：代表過電圧",tag:"site",fm:`U<sub>rp</sub> = ${f1(c.Urp)} ${c.unit}`,
+     tx:"①と同じ出発点。",ref:"IEC 60071-1 3.19"},
+    {nm:"協調耐電圧",sym:"U<sub>cw</sub>",v:c.Ucw,cls:"site",arrow:`× K<sub>c</sub> = ${c.Kc.toFixed(2)}`,
+     h:"協調耐電圧",tag:"site",fm:`U<sub>cw</sub> = ${c.Kc.toFixed(2)} × ${f1(c.Urp)} = <b>${f1(c.Ucw)} ${c.unit}</b>`,
+     tx:"①と同じ。",ref:"IEC 60071-1 3.25"},
+    {nm:"標高補正なし",sym:"U<sub>cw</sub>·K<sub>s</sub>",v:c.Ureq,cls:"std",arrow:`× K<sub>s</sub> = ${c.Ks.toFixed(2)}（K<sub>a</sub> は掛けない）`,
+     h:"ここが①との違い：定格の段階では標高を入れない",tag:"std",
+     fm:`U<sub>cw</sub> × K<sub>s</sub> = ${f1(c.Ucw)} × ${c.Ks.toFixed(2)} = <b>${f1(c.Ureq)} ${c.unit}</b>`,
+     tx:"標準定格耐電圧に基づく場合、定格値は1,000 m以下を前提とした標準値のまま。標高と設計温湿度は、次の試験の段階でまとめて補正する。<br><span class='warn'>①の K<sub>a</sub> とここでの補正を両方掛けると二重補正になる。</span>",ref:"IEC 62927 4.2（COR1:2017）"},
+    {nm:"試験の基準値（仮定）",sym:"U<sub>base</sub>",v:c.Us.v,cls:"std",arrow:"同じ値を引き継ぐ（丸めなし）",
+     h:"試験の基準値：説明用の仮定",tag:"std",
+     fm:`U<sub>base</sub> = U<sub>cw</sub> × K<sub>s</sub> = ${f1(c.Ucw)} × ${c.Ks.toFixed(2)} = <b>${f1(c.Us.v)} ${c.unit}</b>`,
+     tx:"ここでは計算経路を示すため、前段の値をそのまま基準値と仮定する。IEC 62927の実際の規定試験電圧は各試験条項で決まり、定格耐電圧の系列をこの段に機械的に適用しない。",ref:"IEC 62927 各試験条項（説明用の仮定）"},
+    {nm:"設置条件係数",sym:"U<sub>base</sub>/K<sub>site</sub>",v:c.Us.v/c.KS,cls:"std",arrow:`÷ K<sub>site</sub> = ${f3(c.KS)}`,
+     h:"設置条件の補正：標高（1,000 m基準）＋設計最高温度",tag:"std",
+     fm:`δ<sub>site</sub> = ${f3(c.pr)} × 293/(273+${c.tD}) = ${f3(c.dS)}　K<sub>site</sub> = δ<sup>m</sup> = <b>${f3(c.KS)}</b>`,
+     detail:`p/p<sub>1000</sub> = ${c.H<=1000?"1.000":`e<sup>−(${c.H}−1000)/8150</sup> = ${f3(c.pr)}`}　U<sub>base</sub>/K<sub>site</sub> = ${f1(c.Us.v)} / ${f3(c.KS)} = <b>${f1(c.Us.v/c.KS)} ${c.unit}</b>`,
+     tx:`${altTxt}。温度はバルブホールの設計最高空気温度を使う（湿度は本ツールでは省略）。①と違い、温度の影響も入る。`,ref:"IEC 62927 4.2"},
+    {nm:"試験電圧",sym:"U",v:c.UtB,cls:"lab",arrow:`× K<sub>t</sub> = ${f3(c.KL)}`,
+     h:"試験所で実際に印加する電圧",tag:"lab",
+     fm:`U = U<sub>base</sub> × K<sub>t,試験所</sub> / K<sub>site</sub> = ${f1(c.Us.v)} × ${f3(c.KL)} / ${f3(c.KS)} = <b>${f1(c.UtB)} ${c.unit}</b>`,
+     detail:`p<sub>L</sub> = 101.3e<sup>−${c.HL}/8150</sup> = ${f1(c.pL)} kPa　δ<sub>L</sub> = (${f1(c.pL)}/101.3) × 293/(273+${c.tL}) = ${f3(c.dL)}　K<sub>t,試験所</sub> = ${f3(c.dL)}<sup>${c.m.toFixed(2)}</sup> = ${f3(c.KL)}`,
+     tx:"試験所の標高と気温から換算した係数を用いる。設置条件の絶縁強度が低いほど、同じ性能を確認する試験電圧は高くなる。実試験では測定気圧を使用する。",ref:"IEC 60060-1 4.3／ノート5.3節"}
+  ];
+}
+
+function renderLadder(steps,unit){
+  const title = path==="a" ? "IEC 60071 · 定格値で標高を補正" : "IEC 62927 · 試験段階で補正";
+  let h = `<div class="flow-heading"><div><div class="flow-kicker">Calculation path</div><h2>${title}</h2></div><div class="flow-count">STEP ${String(step+1).padStart(2,"0")} / ${String(steps.length).padStart(2,"0")}</div></div>
+    <div class="progress-track" aria-hidden="true"><span style="width:${(step+1)/steps.length*100}%"></span></div><div class="ladder">`;
+  steps.forEach((s,i)=>{
+    if(s.arrow){
+      h += `<div class="transition"><span>↓ ${s.arrow}</span></div>`;
+    }
+    const st = i<step ? "complete" : i===step ? "active" : "upcoming";
+    const color = {site:"var(--site)",std:"var(--std)",lab:"var(--lab)"}[s.cls];
+    h += `<div class="flow-step ${st}" style="--step-color:${color}" ${i===step?'aria-current="step"':""}>
+      <div class="flow-index">${String(i+1).padStart(2,"0")}</div>
+      <div><div class="flow-title"><strong>${s.sym}</strong>${s.nm}</div>
+        <div class="step-equation"><span class="eq-line">${s.fm}</span>${s.detail?`<span class="eq-line">${s.detail}</span>`:""}</div></div>
+      <div class="flow-value">${f1(s.v)}<small>${unit}</small></div>
+    </div>`;
+  });
+  h += `</div>`;
+  const s = steps[step];
+  const tagTxt = {site:"設置条件",std:"標準大気／基準条件",lab:"試験所"}[s.tag];
+  h += `<div class="explain card"><div class="ex" key="${path}${step}">
+    <h3><span class="tag ${s.tag}">${tagTxt}</span>${step+1}/${steps.length}　${s.h}</h3>
+    <div class="detail-copy">${s.tx}</div>
+    <div class="ref">根拠：${s.ref}</div></div></div>`;
+  return h;
+}
+
+function renderCmp(c){
+  const max = Math.max(...[c.UtA,c.UtB,c.eqA,c.eqB,c.Ucw].filter(Number.isFinite))*1.08 || 1;
+  const bar=(lbl,v,cls)=>`<div class="cmpbar"><div class="nm" style="font-size:.84rem">${lbl}</div>
+    <div class="bar"><div class="fill ${cls}" data-w="${isFinite(v)?v/max*100:0}"></div></div><div class="val">${f1(v)}<small>${c.unit}</small></div></div>`;
+  const same = Math.abs(c.eqA-c.eqB) < 0.05;
+  const tNote = c.tD!==20 ? `設計最高温度 ${c.tD} ℃ の影響で②が${c.eqB>c.eqA?"高く":"低く"}なる（①は気圧のみで補正するため）。` : "";
+  const baseNote = c.base===0 && c.H>1000 ? "①を海抜0 m基準にしているため、①の最終値は1,000 m基準より高い。" : "";
+  const roundingNote = !Number.isFinite(c.Uw.v) ? "①は選択中の系列の適用範囲外で、試験電圧を算出できない。" :
+    c.key==="none" ? "①は系列で丸めていない。" : "①だけを候補系列へ切り上げている。";
+  const differenceNote = `${baseNote ? "①と②は標高の基準点が異なる。" : ""}${roundingNote}`;
+  return `<div class="cmp fade">
+    <div class="flow-heading"><div><div class="flow-kicker">Side by side</div><h2>2つの計算経路を比較</h2></div></div>
+    <div class="cmp-section-title">最終的な試験電圧</div>
+    ${bar("① IEC 60071の経路",c.UtA,"lab")}
+    ${bar("② IEC 62927の経路",c.UtB,"lab")}
+    <div class="cmp-section-title">系列で丸める前の等価値 · 1,000 m基準</div>
+    ${bar("① U<sub>cw</sub>K<sub>s</sub>K<sub>a,1000</sub>K<sub>t</sub>",c.eqA,"neu")}
+    ${bar("② U<sub>cw</sub>K<sub>s</sub>K<sub>t</sub>/K<sub>site</sub>",c.eqB,"neu")}
+    <div class="cmp-formulas">
+      <div>① ${f1(c.Ureq)} × ${f3(c.Ka1000)} × ${f3(c.KL)} = <b>${f1(c.eqA)} ${c.unit}</b></div>
+      <div>② ${f1(c.Ureq)} × ${f3(c.KL)} / ${f3(c.KS)} = <b>${f1(c.eqB)} ${c.unit}</b></div>
+      <div>最終値：① ${c.key==="none"?"丸めない値":"候補系列へ切り上げた値"} ${f1(c.Uw.v)} × ${f3(c.KL)} = <b>${f1(c.UtA)} ${c.unit}</b> ／ ② 丸めない仮定値 ${f1(c.Us.v)} × ${f3(c.KL)} / ${f3(c.KS)} = <b>${f1(c.UtB)} ${c.unit}</b></div>
+    </div>
+    <div class="verdict">${same
+      ? "丸め前の値は一致する。2つの経路は、標高補正を<b>定格値の選定</b>に入れるか<b>試験の段階</b>に入れるかの違いで、同じ換算結果になる。"
+      : "丸め前の値が一致しない。" + tNote}
+      ${differenceNote}</div>
+    <table>
+      <tr><th>項目</th><th>① IEC 60071</th><th>② IEC 62927</th></tr>
+      <tr><td>標高を入れる段階</td><td>要求耐電圧（定格値の選定）</td><td>試験電圧（試験の段階）</td></tr>
+      <tr><td>標高の基準点</td><td>${c.base===0?"海抜0 m":"1,000 m"}</td><td>1,000 m</td></tr>
+      <tr><td>温度・湿度</td><td>通常は考慮しない（3.29 注記2）</td><td>設計最高温度を反映（湿度は省略）</td></tr>
+      <tr><td>補正前の基準値</td><td class="n">候補 ${f1(c.Uw.v)} ${c.unit}</td><td class="n">仮定値 ${f1(c.Us.v)} ${c.unit}</td></tr>
+      <tr><td>試験電圧</td><td class="n">${f1(c.UtA)} ${c.unit}</td><td class="n">${f1(c.UtB)} ${c.unit}</td></tr>
+    </table>
+    <div class="warn">両方の補正を重ねて適用しないこと（二重補正）。</div>
+  </div>`;
+}
+
+function render(){
+  const c = compute();
+  $("UrpUnit").textContent = `[${c.unit}]`;
+  const seriesNote = $("seriesNote");
+  seriesNote.textContent = Number.isFinite(c.Uw.v)
+    ? `要求耐電圧 ${f1(c.Urw)} ${c.unit} → ${f1(c.Uw.v)} ${c.unit}（${c.Uw.note}）`
+    : `要求耐電圧 ${f1(c.Urw)} ${c.unit}：${c.Uw.note}`;
+  seriesNote.classList.toggle("warn",!Number.isFinite(c.Uw.v));
+  const view = $("view");
+  if(path==="c"){
+    $("ctrl").style.display="none";
+    view.innerHTML = renderCmp(c);
+  }else{
+    $("ctrl").style.display="";
+    const steps = path==="a" ? stepsA(c) : stepsB(c);
+    step = Math.min(step, steps.length-1);
+    view.innerHTML = renderLadder(steps,c.unit);
+    $("prev").disabled = step===0;
+    $("next").disabled = step===steps.length-1;
+    $("dots").innerHTML = steps.map((_,i)=>`<span class="dot ${i===step?"on":""}" data-i="${i}"></span>`).join("");
+  }
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    view.querySelectorAll(".fill").forEach(el=>el.style.width=el.dataset.w+"%");
+  }));
+}
+
+function go(d){
+  const n = (path==="a"?stepsA:stepsB)(compute()).length;
+  step = Math.max(0, Math.min(n-1, step+d));
+  render();
+}
+function stop(){ clearInterval(timer); timer=null; $("play").textContent="▶ 自動再生"; }
+
+$("prev").onclick=()=>{stop();go(-1)};
+$("next").onclick=()=>{stop();go(1)};
+$("reset").onclick=()=>{stop();step=0;render()};
+$("play").onclick=()=>{
+  if(timer){stop();return}
+  const n = (path==="a"?stepsA:stepsB)(compute()).length;
+  if(step>=n-1) step=0;
+  $("play").textContent="⏸ 停止"; render();
+  timer=setInterval(()=>{ if(step>=n-1){stop();return} go(1) },1800);
+};
+$("dots").onclick=e=>{ if(e.target.dataset.i!=null){stop();step=+e.target.dataset.i;render()} };
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  stop();
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===t));
+  const np=t.dataset.path; if(np!==path){path=np; step=0;} render();
+});
+document.querySelectorAll("input,select").forEach(el=>el.addEventListener("input",render));
+document.addEventListener("keydown",e=>{
+  if(e.target.matches("input,select")||path==="c") return;
+  if(e.key==="ArrowRight"){stop();go(1)} if(e.key==="ArrowLeft"){stop();go(-1)}
+});
+render();
+</script>
+</body>
+</html>

@@ -46,5 +46,13 @@
     "tags": ["計算", "分数", "ブラウザ"],
     "url": "tools/scientific-calculator/",
     "cta": "開く →"
+  },
+  {
+    "icon": "⚡",
+    "title": "絶縁協調・電圧計算フロー",
+    "desc": "IEC 60071とIEC 62927の計算経路を図解。標高補正、標準値候補、試験電圧まで途中式を確認できる概算ツール。",
+    "tags": ["電気", "IEC", "計算", "ブラウザ"],
+    "url": "tools/iec-voltage-flow/",
+    "cta": "開く →"
   }
 ]
